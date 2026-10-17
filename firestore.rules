@@ -13,7 +13,7 @@ service cloud.firestore {
           'sarahbecherer@gmail.com',
           'timajacquessr@gmail.com',
           'tajdtj@gmail.com',
-          'leeann.chen@compass.com'
+          'leeann.chen@gmail.com'
         ];
     }
 
