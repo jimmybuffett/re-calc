@@ -313,6 +313,22 @@ textarea.input { min-height: 72px; resize: vertical; }
 .row-btns { display: flex; flex-wrap: wrap; gap: 8px; }
 .share-out { font-family: var(--mono); font-size: 12px; }
 
+/* Sync status + sign-in gate */
+main { display: contents; }
+.bar-left { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.sync { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.sync::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--good); }
+.sync.saving::before { background: var(--mid); }
+.sync.offline::before { background: var(--muted); }
+.gate {
+  padding: 48px 20px; text-align: center;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow);
+}
+.gate h2 { margin: 0 0 8px; font: 700 22px/1.2 var(--display); text-wrap: balance; }
+.gate p { margin: 0 auto 18px; max-width: 46ch; color: var(--muted); overflow-wrap: anywhere; }
+.gate .row-btns { justify-content: center; }
+.gate .btn { min-height: 44px; padding: 0 18px; }
+
 /* Toast */
 .toast {
   position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%) translateY(20px);
@@ -364,6 +380,27 @@ textarea.input { min-height: 72px; resize: vertical; }
     </div>
   </header>
 
+  <div class="gate" id="gate" hidden>
+    <h2 id="gateTitle">Loading your houses…</h2>
+    <p id="gateText"></p>
+    <div class="row-btns">
+      <button class="btn primary" id="signInBtn" type="button" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21.6 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.4a4.6 4.6 0 0 1-2 3v2.5h3.2c1.9-1.7 3-4.3 3-7.3zM12 22c2.7 0 5-.9 6.6-2.4l-3.2-2.5c-.9.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.1H3.1v2.6A10 10 0 0 0 12 22zM6.4 14a6 6 0 0 1 0-3.9V7.5H3.1a10 10 0 0 0 0 9zM12 5.9c1.5 0 2.8.5 3.8 1.5l2.9-2.9A10 10 0 0 0 3.1 7.5L6.4 10C7.2 7.7 9.4 6 12 6z"/></svg>
+        Sign in with Google
+      </button>
+      <button class="btn" id="gateSignOut" type="button" hidden>Use a different account</button>
+    </div>
+  </div>
+
+  <main id="main">
+  <div class="banner" id="migrateBanner" hidden>
+    <p id="migrateText"></p>
+    <div class="row-btns">
+      <button class="btn ghost" id="migrateNo" type="button">Ignore</button>
+      <button class="btn primary" id="migrateYes" type="button">Add to shared list</button>
+    </div>
+  </div>
+
   <div class="banner" id="importBanner" hidden>
     <p id="importText"></p>
     <div class="row-btns">
@@ -378,7 +415,7 @@ textarea.input { min-height: 72px; resize: vertical; }
   </div>
 
   <div class="bar" id="bar">
-    <span id="count"></span>
+    <span class="bar-left"><span id="count"></span><span class="sync" id="sync" hidden></span></span>
     <label for="sort">Sort by
       <select id="sort">
         <option value="score">Score (high to low)</option>
@@ -396,10 +433,11 @@ textarea.input { min-height: 72px; resize: vertical; }
     <p>Add a house after a showing, paste the Zillow or Compass link, and rate each criterion together.</p>
     <button class="btn primary" type="button" data-action="add">Add your first house</button>
   </div>
+  </main>
 
   <footer class="foot">
     <p><strong>How the score works.</strong> Each criterion's two ratings are averaged. Averages are combined using priority multipliers (priority 1 counts 5×, priority 5 counts 1×), then mapped so all 1s scores 1 and all 10s scores 100. Unrated criteria are left out until someone rates them.</p>
-    <p>Your houses are saved in this browser. To move them to another phone or laptop, use <em>Names &amp; data → Copy share link</em>.</p>
+    <p id="storageNote">Your houses are saved in this browser. To move them to another phone or laptop, use <em>Names &amp; data → Copy share link</em>.</p>
   </footer>
 </div>
 
@@ -483,7 +521,14 @@ textarea.input { min-height: 72px; resize: vertical; }
         <div class="field"><label for="nB">Second rater</label><input class="input" id="nB" type="text" maxlength="20"></div>
       </div>
     </section>
-    <section class="stack">
+    <section class="stack" id="accountSection" hidden>
+      <h3 class="section-title">Sync</h3>
+      <p class="scale-note" id="accountText"></p>
+      <div class="row-btns">
+        <button class="btn" id="signOutBtn" type="button">Sign out</button>
+      </div>
+    </section>
+    <section class="stack" id="shareSection">
       <h3 class="section-title">Move houses between devices</h3>
       <p class="scale-note">Copy a link that holds all your houses and priorities, then open it on the other device. It merges with what's already there, so each of you can rate on your own phone and send the link back.</p>
       <div class="row-btns">
@@ -510,643 +555,956 @@ textarea.input { min-height: 72px; resize: vertical; }
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script>
-(() => {
-  "use strict";
+<script type="module">
+// ---- Firebase sync --------------------------------------------------------
+// Paste the values from Firebase console → Project settings → Your apps → Web app.
+// With apiKey left empty the page runs without sync and saves to this browser only.
+const FIREBASE_CONFIG = {
+  apiKey: "",
+  authDomain: "",
+  projectId: "",
+  storageBucket: "",
+  messagingSenderId: "",
+  appId: "",
+};
+const HOUSEHOLD = "home";          // Firestore path: households/home/houses/{id}
+const FIREBASE_VERSION = "10.14.1";
+const CLOUD = !!FIREBASE_CONFIG.apiKey;
 
-  // ---- Criteria ----------------------------------------------------------
-  // p = default priority (1 = must-have … 5 = nice-to-have)
-  const CRITERIA = [
-    { id: "loc_safety",      group: "Location", name: "Safety",                      p: 1 },
-    { id: "loc_proximity",   group: "Location", name: "Proximity",                   p: 1, hint: "to work, friends, errands" },
-    { id: "space_office",    group: "Space",    name: "Office",                      p: 1 },
-    { id: "space_living",    group: "Space",    name: "Living room",                 p: 1 },
-    { id: "space_bedroom",   group: "Space",    name: "Bedroom",                     p: 1 },
-    { id: "space_guest",     group: "Space",    name: "Guest room",                  p: 2 },
-    { id: "space_furniture", group: "Space",    name: "Ease of arranging furniture", p: 2 },
-    { id: "kitchen_size",    group: "Kitchen",  name: "Size",                        p: 2 },
-    { id: "kitchen_storage", group: "Kitchen",  name: "Storage",                     p: 2 },
-    { id: "kitchen_appl",    group: "Kitchen",  name: "Appliances",                  p: 3 },
-    { id: "base_height",     group: "Basement", name: "Ceiling height",              p: 2 },
-    { id: "base_style",      group: "Basement", name: "Style",                       p: 3 },
-    { id: "base_storage",    group: "Basement", name: "Storage",                     p: 3 },
-    { id: "charm",           group: "The house", name: "Charm / vibe",               p: 1 },
-    { id: "climate",         group: "The house", name: "Climate control",            p: 1, hint: "HVAC, AC, drafts" },
-    { id: "maintenance",     group: "The house", name: "Required maintenance",       p: 1, hint: "10 = nothing to fix" },
-    { id: "condition",       group: "The house", name: "Condition",                  p: 3 },
-    { id: "stairs",          group: "The house", name: "Stairs",                     p: 2, hint: "10 = easy to live with" },
-    { id: "closets",         group: "The house", name: "Closets",                    p: 2 },
-    { id: "outdoor",         group: "Outside",  name: "Outdoor space",               p: 2 },
-    { id: "parking",         group: "Outside",  name: "Parking",                     p: 3 },
-  ];
-  const GROUPS = [...new Set(CRITERIA.map(c => c.group))];
-  const DEFAULT_WEIGHTS = Object.fromEntries(CRITERIA.map(c => [c.id, c.p]));
-  const DEFAULT_NAMES = { a: "Tim", b: "Sarah" };
-  const STORE_KEY = "house-hunt-scorecard:v1";
-  const WHO = ["a", "b"];
+// ---- Criteria -------------------------------------------------------------
+// p = default priority (1 = must-have … 5 = nice-to-have)
+const CRITERIA = [
+  { id: "loc_safety",      group: "Location", name: "Safety",                      p: 1 },
+  { id: "loc_proximity",   group: "Location", name: "Proximity",                   p: 1, hint: "to work, friends, errands" },
+  { id: "space_office",    group: "Space",    name: "Office",                      p: 1 },
+  { id: "space_living",    group: "Space",    name: "Living room",                 p: 1 },
+  { id: "space_bedroom",   group: "Space",    name: "Bedroom",                     p: 1 },
+  { id: "space_guest",     group: "Space",    name: "Guest room",                  p: 2 },
+  { id: "space_furniture", group: "Space",    name: "Ease of arranging furniture", p: 2 },
+  { id: "kitchen_size",    group: "Kitchen",  name: "Size",                        p: 2 },
+  { id: "kitchen_storage", group: "Kitchen",  name: "Storage",                     p: 2 },
+  { id: "kitchen_appl",    group: "Kitchen",  name: "Appliances",                  p: 3 },
+  { id: "base_height",     group: "Basement", name: "Ceiling height",              p: 2 },
+  { id: "base_style",      group: "Basement", name: "Style",                       p: 3 },
+  { id: "base_storage",    group: "Basement", name: "Storage",                     p: 3 },
+  { id: "charm",           group: "The house", name: "Charm / vibe",               p: 1 },
+  { id: "climate",         group: "The house", name: "Climate control",            p: 1, hint: "HVAC, AC, drafts" },
+  { id: "maintenance",     group: "The house", name: "Required maintenance",       p: 1, hint: "10 = nothing to fix" },
+  { id: "condition",       group: "The house", name: "Condition",                  p: 3 },
+  { id: "stairs",          group: "The house", name: "Stairs",                     p: 2, hint: "10 = easy to live with" },
+  { id: "closets",         group: "The house", name: "Closets",                    p: 2 },
+  { id: "outdoor",         group: "Outside",  name: "Outdoor space",               p: 2 },
+  { id: "parking",         group: "Outside",  name: "Parking",                     p: 3 },
+];
+const GROUPS = [...new Set(CRITERIA.map(c => c.group))];
+const DEFAULT_WEIGHTS = Object.fromEntries(CRITERIA.map(c => [c.id, c.p]));
+const DEFAULT_NAMES = { a: "Tim", b: "Sarah" };
+const STORE_KEY = "house-hunt-scorecard:v1";
+const PREFS_KEY = "house-hunt-scorecard:prefs";
+const WHO = ["a", "b"];
 
-  // ---- Scoring -----------------------------------------------------------
-  const multiplier = p => 6 - p; // priority 1 → ×5 … priority 5 → ×1
+// ---- Scoring --------------------------------------------------------------
+const multiplier = p => 6 - p; // priority 1 → ×5 … priority 5 → ×1
 
-  function score(house, weights, who) {
-    let num = 0, den = 0;
-    for (const c of CRITERIA) {
-      const r = house.ratings[c.id] || {};
-      const vals = (who ? [r[who]] : [r.a, r.b]).filter(v => v >= 1 && v <= 10);
-      if (!vals.length) continue;
-      const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
-      const w = multiplier(weights[c.id] ?? c.p);
-      num += w * avg;
-      den += w;
-    }
-    if (!den) return null;
-    return 1 + (num / den - 1) * 99 / 9;
+function score(house, weights, who) {
+  let num = 0, den = 0;
+  for (const c of CRITERIA) {
+    const r = house.ratings[c.id] || {};
+    const vals = (who ? [r[who]] : [r.a, r.b]).filter(v => v >= 1 && v <= 10);
+    if (!vals.length) continue;
+    const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
+    const w = multiplier(weights[c.id] ?? c.p);
+    num += w * avg;
+    den += w;
   }
-  function critAvg(house, id) {
-    const r = house.ratings[id] || {};
-    const vals = [r.a, r.b].filter(v => v >= 1);
-    return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
-  }
-  function filledCount(house) {
-    let n = 0;
-    for (const c of CRITERIA) for (const w of WHO) if (house.ratings[c.id]?.[w] >= 1) n++;
-    return n;
-  }
-  const band = s => s == null ? "none" : s >= 75 ? "good" : s >= 55 ? "mid" : "low";
-  const fmtScore = s => s == null ? "–" : String(Math.round(s));
+  if (!den) return null;
+  return 1 + (num / den - 1) * 99 / 9;
+}
+function critAvg(house, id) {
+  const r = house.ratings[id] || {};
+  const vals = [r.a, r.b].filter(v => v >= 1);
+  return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+}
+function filledCount(house) {
+  let n = 0;
+  for (const c of CRITERIA) for (const w of WHO) if (house.ratings[c.id]?.[w] >= 1) n++;
+  return n;
+}
+const band = s => s == null ? "none" : s >= 75 ? "good" : s >= 55 ? "mid" : "low";
+const fmtScore = s => s == null ? "–" : String(Math.round(s));
+const fmtAvg = v => v == null ? "–" : v.toFixed(1).replace(/\.0$/, "");
 
-  // ---- Data --------------------------------------------------------------
-  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-  const toInt = v => {
-    if (v == null || v === "") return null;
-    const n = typeof v === "number" ? v : Number(String(v).replace(/[^0-9.]/g, ""));
-    return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+// ---- Data -----------------------------------------------------------------
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const toInt = v => {
+  if (v == null || v === "") return null;
+  const n = typeof v === "number" ? v : Number(String(v).replace(/[^0-9.]/g, ""));
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+};
+const validRating = v => (Number.isInteger(v) && v >= 1 && v <= 10) ? v : null;
+
+function normalizeHouse(h) {
+  const now = Date.now();
+  const ratings = {};
+  for (const c of CRITERIA) {
+    const r = (h.ratings && h.ratings[c.id]) || {};
+    ratings[c.id] = { a: validRating(r.a), b: validRating(r.b) };
+  }
+  return {
+    id: String(h.id || uid()),
+    address: String(h.address || ""),
+    url: String(h.url || ""),
+    price: toInt(h.price),
+    sqft: toInt(h.sqft),
+    notes: String(h.notes || ""),
+    ratings,
+    example: !!h.example,
+    createdAt: Number(h.createdAt) || now,
+    updatedAt: Number(h.updatedAt) || now,
   };
-  const validRating = v => (Number.isInteger(v) && v >= 1 && v <= 10) ? v : null;
+}
+function normalizeState(s) {
+  const weights = { ...DEFAULT_WEIGHTS };
+  for (const c of CRITERIA) {
+    const w = s.weights && s.weights[c.id];
+    if (Number.isInteger(w) && w >= 1 && w <= 5) weights[c.id] = w;
+  }
+  return {
+    version: 1,
+    names: { a: (s.names && s.names.a) || DEFAULT_NAMES.a, b: (s.names && s.names.b) || DEFAULT_NAMES.b },
+    weights,
+    settingsUpdatedAt: Number(s.settingsUpdatedAt) || 0,
+    houses: Array.isArray(s.houses) ? s.houses.map(normalizeHouse) : [],
+  };
+}
 
-  function normalizeHouse(h) {
-    const now = Date.now();
+function exampleHouses() {
+  const ids = CRITERIA.map(c => c.id);
+  const mk = (id, address, price, sqft, a, b, daysAgo) => {
     const ratings = {};
-    for (const c of CRITERIA) {
-      const r = (h.ratings && h.ratings[c.id]) || {};
-      ratings[c.id] = { a: validRating(r.a), b: validRating(r.b) };
+    ids.forEach((cid, i) => { ratings[cid] = { a: a[i] ?? null, b: b[i] ?? null }; });
+    const t = Date.now() - daysAgo * 864e5;
+    return { id, address, price, sqft, ratings, example: true, createdAt: t, updatedAt: t, notes: "Example house. Remove it once you've added your own." };
+  };
+  return [
+    mk("ex1", "Craftsman bungalow", 615000, 1980,
+      [9, 8, 7, 8, 7, 6, 8, 7, 6, 5, 4, 5, 6, 10, 6, 7, 7, 6, 5, 8, 6],
+      [9, 7, 8, 9, 7, 5, 7, 8, 6, 6, 4, 4, 5, 9, 7, 6, 8, 7, 6, 9, 7], 2),
+    mk("ex2", "Brick colonial", 689000, 2450,
+      [8, 6, 9, 7, 8, 9, 7, 8, 8, 8, 8, 6, 8, 6, 9, 8, 9, 5, 8, 6, 9],
+      [7, 6, 8, 7, 9, 8, 8, 9, 8, 7, 7, 7, 7, 5, 8, 8, 8, 6, 9, 7, 8], 5),
+    mk("ex3", "Townhouse near the park", 529000, 1640,
+      [7, 10, 5, 6, 6, 4, 5, 6, 5, 9, 6, 7, 3, 7, 8, 9, 9, 3, 4, 4, null],
+      [8, 9, 4, 6, 7, null, 5, 5, 6, 9, 5, 6, 4, 8, 8, 9, 8, 4, 4, 5, null], 9),
+  ];
+}
+
+function readJSON(key) {
+  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; }
+  catch (e) { return null; }
+}
+function writeJSON(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)); return true; }
+  catch (e) { return false; }
+}
+
+const prefs = { sort: "score", migrated: false, ...(readJSON(PREFS_KEY) || {}) };
+if (!["score", "price", "ppsf", "newest"].includes(prefs.sort)) prefs.sort = "score";
+const savePrefs = () => writeJSON(PREFS_KEY, prefs);
+
+const localSaved = readJSON(STORE_KEY);
+let state = CLOUD ? normalizeState({}) : normalizeState(localSaved || { houses: exampleHouses() });
+
+let storageWarned = false;
+function saveLocal() {
+  if (CLOUD) return;
+  if (!writeJSON(STORE_KEY, state) && !storageWarned) {
+    storageWarned = true;
+    toast("This browser isn't saving. Copy a share link to keep your houses.");
+  }
+}
+
+// ---- Persistence ----------------------------------------------------------
+// Every change mutates `state` first, then tells `persist`. Without sync that
+// just writes localStorage; with sync it writes Firestore, and the live
+// listener brings everyone's changes back into `state`.
+const localPersist = {
+  house() { saveLocal(); },
+  add() { saveLocal(); },
+  remove() { saveLocal(); },
+  many() { saveLocal(); },
+  settings() { saveLocal(); },
+  wipe() { saveLocal(); },
+  flushAll() {},
+};
+let persist = localPersist;
+
+const pending = new Map();     // house id → fields waiting to be written
+const unconfirmed = new Map(); // houses created here that no snapshot has shown yet
+let settingsTimer = null;
+
+function applyFields(h, fields) {
+  for (const [k, v] of Object.entries(fields)) {
+    if (k.startsWith("ratings.")) {
+      const [, c, w] = k.split(".");
+      if (h.ratings[c]) h.ratings[c][w] = v;
+    } else if (k in h) {
+      h[k] = v;
     }
-    return {
-      id: String(h.id || uid()),
-      address: String(h.address || ""),
-      url: String(h.url || ""),
-      price: toInt(h.price),
-      sqft: toInt(h.sqft),
-      notes: String(h.notes || ""),
-      ratings,
-      example: !!h.example,
-      createdAt: Number(h.createdAt) || now,
-      updatedAt: Number(h.updatedAt) || now,
-    };
   }
-  function normalizeState(s) {
-    const weights = { ...DEFAULT_WEIGHTS };
-    for (const c of CRITERIA) {
-      const w = s.weights && s.weights[c.id];
-      if (Number.isInteger(w) && w >= 1 && w <= 5) weights[c.id] = w;
-    }
-    return {
-      version: 1,
-      names: { a: (s.names && s.names.a) || DEFAULT_NAMES.a, b: (s.names && s.names.b) || DEFAULT_NAMES.b },
-      weights,
-      settingsUpdatedAt: Number(s.settingsUpdatedAt) || 0,
-      sort: ["score", "price", "ppsf", "newest"].includes(s.sort) ? s.sort : "score",
-      houses: Array.isArray(s.houses) ? s.houses.map(normalizeHouse) : [],
-    };
-  }
+}
 
-  function exampleHouses() {
-    const ids = CRITERIA.map(c => c.id);
-    const mk = (id, address, price, sqft, a, b, daysAgo) => {
-      const ratings = {};
-      ids.forEach((cid, i) => { ratings[cid] = { a: a[i] ?? null, b: b[i] ?? null }; });
-      const t = Date.now() - daysAgo * 864e5;
-      return { id, address, price, sqft, ratings, example: true, createdAt: t, updatedAt: t, notes: "Example house. Remove it once you've added your own." };
-    };
-    return [
-      mk("ex1", "Craftsman bungalow", 615000, 1980,
-        [9, 8, 7, 8, 7, 6, 8, 7, 6, 5, 4, 5, 6, 10, 6, 7, 7, 6, 5, 8, 6],
-        [9, 7, 8, 9, 7, 5, 7, 8, 6, 6, 4, 4, 5, 9, 7, 6, 8, 7, 6, 9, 7], 2),
-      mk("ex2", "Brick colonial", 689000, 2450,
-        [8, 6, 9, 7, 8, 9, 7, 8, 8, 8, 8, 6, 8, 6, 9, 8, 9, 5, 8, 6, 9],
-        [7, 6, 8, 7, 9, 8, 8, 9, 8, 7, 7, 7, 7, 5, 8, 8, 8, 6, 9, 7, 8], 5),
-      mk("ex3", "Townhouse near the park", 529000, 1640,
-        [7, 10, 5, 6, 6, 4, 5, 6, 5, 9, 6, 7, 3, 7, 8, 9, 9, 3, 4, 4, null],
-        [8, 9, 4, 6, 7, null, 5, 5, 6, 9, 5, 6, 4, 8, 8, 9, 8, 4, 4, 5, null], 9),
-    ];
-  }
+// ---- Formatting -----------------------------------------------------------
+const esc = s => String(s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+const commas = n => n == null ? "" : n.toLocaleString("en-US");
+function money(n) {
+  if (n == null) return "";
+  if (n >= 1e6) return "$" + (n / 1e6).toFixed(2).replace(/\.?0+$/, "") + "M";
+  if (n >= 1e3) return "$" + Math.round(n / 1e3) + "K";
+  return "$" + n;
+}
+const ppsf = h => (h.price && h.sqft) ? h.price / h.sqft : null;
+function sourceLabel(u) {
+  try {
+    const host = new URL(u).hostname.replace(/^www\./, "");
+    if (host.includes("zillow")) return "Zillow";
+    if (host.includes("compass")) return "Compass";
+    if (host.includes("redfin")) return "Redfin";
+    if (host.includes("realtor")) return "Realtor.com";
+    return host;
+  } catch (e) { return ""; }
+}
+const safeUrl = u => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ""; } catch (e) { return ""; } };
 
-  let storageOk = true;
-  function load() {
-    try {
-      const raw = localStorage.getItem(STORE_KEY);
-      if (raw) return normalizeState(JSON.parse(raw));
-    } catch (e) { storageOk = false; }
-    return normalizeState({ houses: exampleHouses() });
-  }
-  function save() {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
-    catch (e) {
-      if (storageOk) toast("This browser isn't saving. Copy a share link to keep your houses.");
-      storageOk = false;
-    }
-  }
+// Zillow / Compass URLs carry the address in their slug:
+//   zillow.com/homedetails/1842-W-Wolfram-St-Chicago-IL-60657/3812345_zpid/
+//   compass.com/homedetails/1842-W-Wolfram-St-Chicago-IL-60657/ABC_pid/
+//   compass.com/listing/1842-w-wolfram-st-chicago-il-60657/123456/
+function addressFromUrl(u) {
+  try {
+    const parts = new URL(u).pathname.split("/").filter(Boolean);
+    const i = parts.findIndex(p => p === "homedetails" || p === "listing");
+    if (i < 0 || !parts[i + 1]) return "";
+    const words = decodeURIComponent(parts[i + 1]).split("-").filter(Boolean);
+    if (words.length < 2 || /_zpid$|_pid$/.test(parts[i + 1])) return "";
+    return words.map((w, j) => {
+      if (/^[a-z]{2}$/i.test(w) && /^\d{5}$/.test(words[j + 1] || "")) return w.toUpperCase();
+      if (/^[nsew]$/i.test(w)) return w.toUpperCase();
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    }).join(" ");
+  } catch (e) { return ""; }
+}
 
-  let state = load();
+// ---- Rendering: list ------------------------------------------------------
+const $ = id => document.getElementById(id);
+const listEl = $("list");
 
-  // ---- Formatting --------------------------------------------------------
-  const esc = s => String(s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
-  const commas = n => n == null ? "" : n.toLocaleString("en-US");
-  function money(n) {
-    if (n == null) return "";
-    if (n >= 1e6) return "$" + (n / 1e6).toFixed(2).replace(/\.?0+$/, "") + "M";
-    if (n >= 1e3) return "$" + Math.round(n / 1e3) + "K";
-    return "$" + n;
-  }
-  const ppsf = h => (h.price && h.sqft) ? h.price / h.sqft : null;
-  function sourceLabel(u) {
-    try {
-      const host = new URL(u).hostname.replace(/^www\./, "");
-      if (host.includes("zillow")) return "Zillow";
-      if (host.includes("compass")) return "Compass";
-      if (host.includes("redfin")) return "Redfin";
-      if (host.includes("realtor")) return "Realtor.com";
-      return host;
-    } catch (e) { return ""; }
-  }
-  const safeUrl = u => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ""; } catch (e) { return ""; } };
+function applyNames() {
+  document.querySelectorAll("[data-name]").forEach(el => { el.textContent = state.names[el.dataset.name]; });
+}
 
-  // Zillow / Compass URLs carry the address in their slug:
-  //   zillow.com/homedetails/1842-W-Wolfram-St-Chicago-IL-60657/3812345_zpid/
-  //   compass.com/homedetails/1842-W-Wolfram-St-Chicago-IL-60657/ABC_pid/
-  //   compass.com/listing/1842-w-wolfram-st-chicago-il-60657/123456/
-  function addressFromUrl(u) {
-    try {
-      const parts = new URL(u).pathname.split("/").filter(Boolean);
-      const i = parts.findIndex(p => p === "homedetails" || p === "listing");
-      if (i < 0 || !parts[i + 1]) return "";
-      const words = decodeURIComponent(parts[i + 1]).split("-").filter(Boolean);
-      if (words.length < 2 || /_zpid$|_pid$/.test(parts[i + 1])) return "";
-      return words.map((w, j) => {
-        if (/^[a-z]{2}$/i.test(w) && /^\d{5}$/.test(words[j + 1] || "")) return w.toUpperCase();
-        if (/^[nsew]$/i.test(w)) return w.toUpperCase();
-        return w.charAt(0).toUpperCase() + w.slice(1);
-      }).join(" ");
-    } catch (e) { return ""; }
-  }
+function render() {
+  const houses = state.houses;
+  const scored = houses.map(h => ({ h, s: score(h, state.weights), a: score(h, state.weights, "a"), b: score(h, state.weights, "b") }));
+  const byScore = [...scored].sort((x, y) => (y.s ?? -1) - (x.s ?? -1) || y.h.updatedAt - x.h.updatedAt);
+  const rankOf = new Map(byScore.map((x, i) => [x.h.id, x.s == null ? null : i + 1]));
 
-  // ---- Rendering: list ---------------------------------------------------
-  const $ = id => document.getElementById(id);
-  const listEl = $("list");
+  let rows = byScore;
+  if (prefs.sort === "price") rows = [...scored].sort((x, y) => (x.h.price ?? Infinity) - (y.h.price ?? Infinity));
+  if (prefs.sort === "ppsf") rows = [...scored].sort((x, y) => (ppsf(x.h) ?? Infinity) - (ppsf(y.h) ?? Infinity));
+  if (prefs.sort === "newest") rows = [...scored].sort((x, y) => y.h.updatedAt - x.h.updatedAt);
 
-  function applyNames() {
-    document.querySelectorAll("[data-name]").forEach(el => { el.textContent = state.names[el.dataset.name]; });
-  }
-
-  function render() {
-    const houses = state.houses;
-    const scored = houses.map(h => ({ h, s: score(h, state.weights), a: score(h, state.weights, "a"), b: score(h, state.weights, "b") }));
-    const byScore = [...scored].sort((x, y) => (y.s ?? -1) - (x.s ?? -1) || y.h.updatedAt - x.h.updatedAt);
-    const rankOf = new Map(byScore.map((x, i) => [x.h.id, x.s == null ? null : i + 1]));
-
-    let rows = byScore;
-    if (state.sort === "price") rows = [...scored].sort((x, y) => (x.h.price ?? Infinity) - (y.h.price ?? Infinity));
-    if (state.sort === "ppsf") rows = [...scored].sort((x, y) => (ppsf(x.h) ?? Infinity) - (ppsf(y.h) ?? Infinity));
-    if (state.sort === "newest") rows = [...scored].sort((x, y) => y.h.updatedAt - x.h.updatedAt);
-
-    listEl.innerHTML = rows.map(({ h, s, a, b }) => {
-      const rank = rankOf.get(h.id);
-      const meta = [];
-      if (h.price) meta.push(`<span class="num" title="$${commas(h.price)}">${money(h.price)}</span>`);
-      if (h.sqft) meta.push(`<span><span class="num">${commas(h.sqft)}</span> sq ft</span>`);
-      const p = ppsf(h);
-      if (p) meta.push(`<span><span class="num">$${Math.round(p)}</span>/sq ft</span>`);
-      const link = safeUrl(h.url);
-      if (link) meta.push(`<a href="${esc(link)}" target="_blank" rel="noopener" data-link>${esc(sourceLabel(link))} ↗</a>`);
-      const filled = filledCount(h);
-      const total = CRITERIA.length * 2;
-      const pos = v => `${Math.max(0, Math.min(100, (v - 1) / 99 * 100)).toFixed(1)}%`;
-      return `<li><div class="house" role="button" tabindex="0" data-id="${esc(h.id)}" aria-label="Edit ${esc(h.address || "untitled house")}">
-        <div class="rank${rank === 1 ? " first" : ""}" title="Rank by score">${rank ?? "–"}</div>
-        <div class="h-main">
-          <h2 class="h-name">${esc(h.address || "Untitled house")}${h.example ? '<span class="tag">Example</span>' : ""}</h2>
-          ${meta.length ? `<div class="h-meta">${meta.join("")}</div>` : ""}
+  listEl.innerHTML = rows.map(({ h, s, a, b }) => {
+    const rank = rankOf.get(h.id);
+    const meta = [];
+    if (h.price) meta.push(`<span class="num" title="$${commas(h.price)}">${money(h.price)}</span>`);
+    if (h.sqft) meta.push(`<span><span class="num">${commas(h.sqft)}</span> sq ft</span>`);
+    const p = ppsf(h);
+    if (p) meta.push(`<span><span class="num">$${Math.round(p)}</span>/sq ft</span>`);
+    const link = safeUrl(h.url);
+    if (link) meta.push(`<a href="${esc(link)}" target="_blank" rel="noopener" data-link>${esc(sourceLabel(link))} ↗</a>`);
+    const filled = filledCount(h);
+    const total = CRITERIA.length * 2;
+    const pos = v => `${Math.max(0, Math.min(100, (v - 1) / 99 * 100)).toFixed(1)}%`;
+    return `<li><div class="house" role="button" tabindex="0" data-id="${esc(h.id)}" aria-label="Edit ${esc(h.address || "untitled house")}">
+      <div class="rank${rank === 1 ? " first" : ""}" title="Rank by score">${rank ?? "–"}</div>
+      <div class="h-main">
+        <h2 class="h-name">${esc(h.address || "Untitled house")}${h.example ? '<span class="tag">Example</span>' : ""}</h2>
+        ${meta.length ? `<div class="h-meta">${meta.join("")}</div>` : ""}
+      </div>
+      <div class="h-score"><div class="big ${band(s)}">${s == null ? "Unrated" : `${fmtScore(s)}<small>/100</small>`}</div></div>
+      <div class="h-sub">
+        <div class="track" aria-hidden="true">
+          <div class="rail"></div>
+          ${s != null ? `<div class="fill" style="width:${pos(s)}"></div>` : ""}
+          ${a != null ? `<div class="dot a" style="left:${pos(a)}"></div>` : ""}
+          ${b != null ? `<div class="dot b" style="left:${pos(b)}"></div>` : ""}
         </div>
-        <div class="h-score"><div class="big ${band(s)}">${s == null ? "Unrated" : `${fmtScore(s)}<small>/100</small>`}</div></div>
-        <div class="h-sub">
-          <div class="track" aria-hidden="true">
-            <div class="rail"></div>
-            ${s != null ? `<div class="fill" style="width:${pos(s)}"></div>` : ""}
-            ${a != null ? `<div class="dot a" style="left:${pos(a)}"></div>` : ""}
-            ${b != null ? `<div class="dot b" style="left:${pos(b)}"></div>` : ""}
-          </div>
-          <div class="legend">
-            <span class="la"><span class="sw"></span>${esc(state.names.a)} <b>${fmtScore(a)}</b></span>
-            <span class="lb"><span class="sw"></span>${esc(state.names.b)} <b>${fmtScore(b)}</b></span>
-            <span>${filled === total ? "All rated" : `${filled} of ${total} ratings`}</span>
-          </div>
+        <div class="legend">
+          <span class="la"><span class="sw"></span>${esc(state.names.a)} <b>${fmtScore(a)}</b></span>
+          <span class="lb"><span class="sw"></span>${esc(state.names.b)} <b>${fmtScore(b)}</b></span>
+          <span>${filled === total ? "All rated" : `${filled} of ${total} ratings`}</span>
         </div>
-      </div></li>`;
-    }).join("");
+      </div>
+    </div></li>`;
+  }).join("");
 
-    const real = houses.filter(h => !h.example).length;
-    $("empty").hidden = houses.length > 0;
-    $("bar").hidden = houses.length === 0;
-    $("exampleBanner").hidden = !houses.some(h => h.example);
-    $("count").textContent = houses.length === 1 ? "1 house" : `${houses.length} houses`;
-    if (houses.length && real === 0) $("count").textContent += " (examples)";
-    $("sort").value = state.sort;
+  const real = houses.filter(h => !h.example).length;
+  $("empty").hidden = houses.length > 0;
+  $("bar").hidden = houses.length === 0;
+  $("exampleBanner").hidden = !houses.some(h => h.example);
+  $("count").textContent = houses.length === 1 ? "1 house" : `${houses.length} houses`;
+  if (houses.length && real === 0) $("count").textContent += " (examples)";
+  $("sort").value = prefs.sort;
+}
+
+listEl.addEventListener("click", e => {
+  if (e.target.closest("[data-link]")) return;
+  const card = e.target.closest(".house");
+  if (card) openEditor(card.dataset.id);
+});
+listEl.addEventListener("keydown", e => {
+  if ((e.key === "Enter" || e.key === " ") && e.target.classList.contains("house")) {
+    e.preventDefault();
+    openEditor(e.target.dataset.id);
   }
+});
+$("sort").addEventListener("change", e => { prefs.sort = e.target.value; savePrefs(); render(); });
+$("removeExamples").addEventListener("click", () => {
+  state.houses = state.houses.filter(h => !h.example);
+  saveLocal(); render();
+  toast("Examples removed");
+});
 
-  listEl.addEventListener("click", e => {
-    if (e.target.closest("[data-link]")) return;
-    const card = e.target.closest(".house");
-    if (card) openEditor(card.dataset.id);
-  });
-  listEl.addEventListener("keydown", e => {
-    if ((e.key === "Enter" || e.key === " ") && e.target.classList.contains("house")) {
-      e.preventDefault();
-      openEditor(e.target.dataset.id);
-    }
-  });
-  $("sort").addEventListener("change", e => { state.sort = e.target.value; save(); render(); });
-  $("removeExamples").addEventListener("click", () => {
-    state.houses = state.houses.filter(h => !h.example);
-    save(); render();
-    toast("Examples removed");
-  });
+// ---- Editor ---------------------------------------------------------------
+const editor = $("editor");
+let current = null;   // house being edited
+let isNew = false;
 
-  // ---- Editor ------------------------------------------------------------
-  const editor = $("editor");
-  let current = null;   // house being edited
-  let isNew = false;
+function touch(fields, debounce = false) {
+  current.updatedAt = Date.now();
+  persist.house(current, fields, debounce);
+  render();
+}
 
-  function touch() { current.updatedAt = Date.now(); save(); render(); }
+function buildRatings() {
+  const pips = (cid, who, val) => Array.from({ length: 10 }, (_, i) => {
+    const v = i + 1;
+    const cls = val == null ? "" : v === val ? " sel" : v < val ? " fill" : "";
+    return `<button type="button" class="pip${cls}" data-c="${cid}" data-w="${who}" data-v="${v}" aria-pressed="${v === val}" aria-label="${esc(state.names[who])}: ${v} of 10">${v}</button>`;
+  }).join("");
+  $("edRatings").innerHTML = GROUPS.map(g => `
+    <div class="group">
+      <h3 class="section-title"><span>${esc(g)}</span></h3>
+      <div class="crits">
+        ${CRITERIA.filter(c => c.group === g).map(c => {
+          const r = current.ratings[c.id];
+          const p = state.weights[c.id];
+          const avg = critAvg(current, c.id);
+          return `<div class="crit" data-crit="${c.id}">
+            <div class="crit-head">
+              <span class="crit-name">${esc(c.name)}${c.hint ? ` <span class="crit-hint">${esc(c.hint)}</span>` : ""}</span>
+              <span class="pri" title="Priority ${p}, counts ${multiplier(p)}×">P${p}</span>
+              <span class="crit-avg${avg == null ? " empty-avg" : ""}" data-avg="${c.id}" title="Average">${fmtAvg(avg)}</span>
+            </div>
+            ${WHO.map(w => `<div class="rate-row r${w}"><span class="who">${esc(state.names[w])}</span><div class="pips" role="group" data-pips="${c.id}-${w}" aria-label="${esc(state.names[w])}'s rating for ${esc(c.name)}">${pips(c.id, w, r[w])}</div></div>`).join("")}
+          </div>`;
+        }).join("")}
+      </div>
+    </div>`).join("");
+}
 
-  function buildRatings() {
-    const pips = (cid, who, val) => Array.from({ length: 10 }, (_, i) => {
-      const v = i + 1;
-      const cls = val == null ? "" : v === val ? " sel" : v < val ? " fill" : "";
-      return `<button type="button" class="pip${cls}" data-c="${cid}" data-w="${who}" data-v="${v}" aria-pressed="${v === val}" aria-label="${esc(state.names[who])}: ${v} of 10">${v}</button>`;
-    }).join("");
-    $("edRatings").innerHTML = GROUPS.map(g => `
-      <div class="group">
-        <h3 class="section-title"><span>${esc(g)}</span></h3>
-        <div class="crits">
-          ${CRITERIA.filter(c => c.group === g).map(c => {
-            const r = current.ratings[c.id];
-            const p = state.weights[c.id];
-            const avg = critAvg(current, c.id);
-            return `<div class="crit" data-crit="${c.id}">
-              <div class="crit-head">
-                <span class="crit-name">${esc(c.name)}${c.hint ? ` <span class="crit-hint">${esc(c.hint)}</span>` : ""}</span>
-                <span class="pri" title="Priority ${p}, counts ${multiplier(p)}×">P${p}</span>
-                <span class="crit-avg${avg == null ? " empty-avg" : ""}" data-avg="${c.id}" title="Average">${avg == null ? "–" : avg.toFixed(1).replace(/\.0$/, "")}</span>
-              </div>
-              ${WHO.map(w => `<div class="rate-row r${w}"><span class="who">${esc(state.names[w])}</span><div class="pips" role="group" aria-label="${esc(state.names[w])}'s rating for ${esc(c.name)}">${pips(c.id, w, r[w])}</div></div>`).join("")}
-            </div>`;
-          }).join("")}
-        </div>
-      </div>`).join("");
-  }
-
-  function refreshEditorScores() {
-    const s = score(current, state.weights);
-    const el = $("edScore");
-    el.className = "big " + band(s);
-    el.textContent = fmtScore(s);
-    $("edA").textContent = fmtScore(score(current, state.weights, "a"));
-    $("edB").textContent = fmtScore(score(current, state.weights, "b"));
-  }
-  function refreshListingBits() {
-    $("edTitle").textContent = current.address || (isNew ? "New house" : "Untitled house");
-    const link = safeUrl(current.url);
-    $("fUrlOpen").hidden = !link;
-    if (link) $("fUrlOpen").href = link;
-    const p = ppsf(current);
-    $("fPpsf").textContent = p ? `$${Math.round(p)} per sq ft` : "";
-  }
-
-  function openEditor(id, fresh = false) {
-    current = state.houses.find(h => h.id === id);
-    if (!current) return;
-    isNew = fresh;
-    $("fUrl").value = current.url;
-    $("fName").value = current.address;
-    $("fPrice").value = commas(current.price);
-    $("fSqft").value = commas(current.sqft);
-    $("fNotes").value = current.notes;
-    resetDelete();
-    buildRatings();
-    refreshListingBits();
-    refreshEditorScores();
-    $("edBody").scrollTop = 0;
-    if (!editor.open) editor.showModal();
-    if (fresh) setTimeout(() => $("fUrl").focus(), 50);
-  }
-
-  function isBlank(h) {
-    return !h.address && !h.url && !h.price && !h.sqft && !h.notes && filledCount(h) === 0;
-  }
-  function closeEditor() { if (editor.open) editor.close(); }
-  editor.addEventListener("close", () => {
-    if (current && isBlank(current)) {
-      state.houses = state.houses.filter(h => h !== current);
-      save(); render();
-    }
-    current = null;
-  });
-  editor.addEventListener("click", e => { if (e.target === editor) closeEditor(); });
-  $("edDone").addEventListener("click", closeEditor);
-
-  $("edRatings").addEventListener("click", e => {
-    const pip = e.target.closest(".pip");
-    if (!pip || !current) return;
-    const { c, w } = pip.dataset;
-    const v = Number(pip.dataset.v);
-    const r = current.ratings[c];
-    r[w] = r[w] === v ? null : v; // tap the same number again to clear
-    pip.parentElement.querySelectorAll(".pip").forEach(btn => {
+function paintCrit(cid) {
+  const r = current.ratings[cid];
+  for (const w of WHO) {
+    const row = $("edRatings").querySelector(`[data-pips="${cid}-${w}"]`);
+    if (!row) continue;
+    row.querySelectorAll(".pip").forEach(btn => {
       const bv = Number(btn.dataset.v);
       btn.classList.toggle("sel", r[w] === bv);
       btn.classList.toggle("fill", r[w] != null && bv < r[w]);
       btn.setAttribute("aria-pressed", String(r[w] === bv));
     });
-    const avg = critAvg(current, c);
-    const avgEl = $("edRatings").querySelector(`[data-avg="${c}"]`);
-    avgEl.textContent = avg == null ? "–" : avg.toFixed(1).replace(/\.0$/, "");
+  }
+  const avg = critAvg(current, cid);
+  const avgEl = $("edRatings").querySelector(`[data-avg="${cid}"]`);
+  if (avgEl) {
+    avgEl.textContent = fmtAvg(avg);
     avgEl.classList.toggle("empty-avg", avg == null);
-    if (current.example) current.example = false;
-    refreshEditorScores();
-    touch();
-  });
-
-  $("fUrl").addEventListener("input", e => { current.url = e.target.value.trim(); refreshListingBits(); touch(); });
-  $("fUrl").addEventListener("change", () => {
-    if (!current.address) {
-      const guess = addressFromUrl(current.url);
-      if (guess) { current.address = guess; $("fName").value = guess; refreshListingBits(); touch(); }
-    }
-  });
-  $("fName").addEventListener("input", e => { current.address = e.target.value; refreshListingBits(); touch(); });
-  $("fNotes").addEventListener("input", e => { current.notes = e.target.value; touch(); });
-  for (const [id, key] of [["fPrice", "price"], ["fSqft", "sqft"]]) {
-    $(id).addEventListener("input", e => { current[key] = toInt(e.target.value); refreshListingBits(); touch(); });
-    $(id).addEventListener("blur", e => { e.target.value = commas(current[key]); });
   }
+}
 
-  let deleteTimer = null;
-  function resetDelete() {
-    clearTimeout(deleteTimer);
-    $("edDelete").classList.remove("armed");
-    $("edDelete").textContent = "Delete house";
+function refreshEditorScores() {
+  const s = score(current, state.weights);
+  const el = $("edScore");
+  el.className = "big " + band(s);
+  el.textContent = fmtScore(s);
+  $("edA").textContent = fmtScore(score(current, state.weights, "a"));
+  $("edB").textContent = fmtScore(score(current, state.weights, "b"));
+}
+function refreshListingBits() {
+  $("edTitle").textContent = current.address || (isNew ? "New house" : "Untitled house");
+  const link = safeUrl(current.url);
+  $("fUrlOpen").hidden = !link;
+  if (link) $("fUrlOpen").href = link;
+  const p = ppsf(current);
+  $("fPpsf").textContent = p ? `$${Math.round(p)} per sq ft` : "";
+}
+const FIELD_INPUTS = [["fUrl", "url"], ["fName", "address"], ["fPrice", "price"], ["fSqft", "sqft"], ["fNotes", "notes"]];
+function fillInputs(skipFocused) {
+  for (const [id, key] of FIELD_INPUTS) {
+    const el = $(id);
+    if (skipFocused && document.activeElement === el) continue;
+    el.value = (key === "price" || key === "sqft") ? commas(current[key]) : current[key];
   }
-  $("edDelete").addEventListener("click", () => {
-    const btn = $("edDelete");
-    if (!btn.classList.contains("armed")) {
-      btn.classList.add("armed");
-      btn.textContent = "Tap again to delete";
-      deleteTimer = setTimeout(resetDelete, 4000);
-      return;
-    }
-    const name = current.address || "House";
+}
+
+// A live update arrived while the editor is open: repaint without
+// disturbing whatever field the viewer is typing in.
+function syncEditor() {
+  fillInputs(true);
+  CRITERIA.forEach(c => paintCrit(c.id));
+  refreshListingBits();
+  refreshEditorScores();
+}
+
+function openEditor(id, fresh = false) {
+  current = state.houses.find(h => h.id === id);
+  if (!current) return;
+  isNew = fresh;
+  fillInputs(false);
+  resetDelete();
+  buildRatings();
+  refreshListingBits();
+  refreshEditorScores();
+  $("edBody").scrollTop = 0;
+  if (!editor.open) editor.showModal();
+  if (fresh) setTimeout(() => $("fUrl").focus(), 50);
+}
+
+function isBlank(h) {
+  return !h.address && !h.url && !h.price && !h.sqft && !h.notes && filledCount(h) === 0;
+}
+function closeEditor() { if (editor.open) editor.close(); }
+editor.addEventListener("close", () => {
+  if (current && isBlank(current)) {
+    const id = current.id;
     state.houses = state.houses.filter(h => h !== current);
-    current = null;
-    save(); render(); closeEditor();
-    toast(`${name} deleted`);
+    persist.remove(id);
+    render();
+  }
+  persist.flushAll();
+  current = null;
+});
+editor.addEventListener("click", e => { if (e.target === editor) closeEditor(); });
+$("edDone").addEventListener("click", closeEditor);
+
+$("edRatings").addEventListener("click", e => {
+  const pip = e.target.closest(".pip");
+  if (!pip || !current) return;
+  const { c, w } = pip.dataset;
+  const v = Number(pip.dataset.v);
+  const r = current.ratings[c];
+  r[w] = r[w] === v ? null : v; // tap the same number again to clear
+  paintCrit(c);
+  if (current.example) current.example = false;
+  refreshEditorScores();
+  touch({ [`ratings.${c}.${w}`]: r[w] });
+});
+
+$("fUrl").addEventListener("input", e => { current.url = e.target.value.trim(); refreshListingBits(); touch({ url: current.url }, true); });
+$("fUrl").addEventListener("change", () => {
+  if (!current.address) {
+    const guess = addressFromUrl(current.url);
+    if (guess) { current.address = guess; $("fName").value = guess; refreshListingBits(); touch({ address: guess }, true); }
+  }
+});
+$("fName").addEventListener("input", e => { current.address = e.target.value; refreshListingBits(); touch({ address: current.address }, true); });
+$("fNotes").addEventListener("input", e => { current.notes = e.target.value; touch({ notes: current.notes }, true); });
+for (const [id, key] of [["fPrice", "price"], ["fSqft", "sqft"]]) {
+  $(id).addEventListener("input", e => { current[key] = toInt(e.target.value); refreshListingBits(); touch({ [key]: current[key] }, true); });
+  $(id).addEventListener("blur", e => { if (current) e.target.value = commas(current[key]); });
+}
+
+let deleteTimer = null;
+function resetDelete() {
+  clearTimeout(deleteTimer);
+  $("edDelete").classList.remove("armed");
+  $("edDelete").textContent = "Delete house";
+}
+$("edDelete").addEventListener("click", () => {
+  const btn = $("edDelete");
+  if (!btn.classList.contains("armed")) {
+    btn.classList.add("armed");
+    btn.textContent = "Tap again to delete";
+    deleteTimer = setTimeout(resetDelete, 4000);
+    return;
+  }
+  const name = current.address || "House";
+  const id = current.id;
+  state.houses = state.houses.filter(h => h !== current);
+  current = null;
+  persist.remove(id);
+  render(); closeEditor();
+  toast(`${name} deleted`);
+});
+
+function addHouse() {
+  const h = normalizeHouse({});
+  state.houses.push(h);
+  persist.add(h);
+  render();
+  openEditor(h.id, true);
+}
+$("addHouse").addEventListener("click", addHouse);
+document.addEventListener("click", e => { if (e.target.closest("[data-action=add]")) addHouse(); });
+
+// ---- Priorities -----------------------------------------------------------
+const weightsDlg = $("weights");
+function buildWeights() {
+  const body = weightsDlg.querySelector(".d-body");
+  const scroll = body.scrollTop;
+  $("wGroups").innerHTML = GROUPS.map(g => `
+    <div>
+      <h3 class="section-title"><span>${esc(g)}</span></h3>
+      <div class="w-list">
+        ${CRITERIA.filter(c => c.group === g).map(c => {
+          const p = state.weights[c.id];
+          return `<div class="w-row">
+            <span class="nm">${esc(c.name)}<small>Counts ${multiplier(p)}×</small></span>
+            <span class="seg" role="group" aria-label="Priority for ${esc(g)}: ${esc(c.name)}">
+              ${[1, 2, 3, 4, 5].map(v => `<button type="button" data-c="${c.id}" data-v="${v}" class="${v === p ? "sel" : ""}${v === c.p ? " def" : ""}" aria-pressed="${v === p}">${v}</button>`).join("")}
+            </span>
+          </div>`;
+        }).join("")}
+      </div>
+    </div>`).join("");
+  body.scrollTop = scroll;
+}
+function settingsChanged() {
+  state.settingsUpdatedAt = Date.now();
+  persist.settings();
+  render();
+  if (current) { buildRatings(); refreshEditorScores(); }
+}
+$("openWeights").addEventListener("click", () => { buildWeights(); weightsDlg.showModal(); });
+$("wGroups").addEventListener("click", e => {
+  const b = e.target.closest("button[data-c]");
+  if (!b) return;
+  state.weights[b.dataset.c] = Number(b.dataset.v);
+  settingsChanged();
+  buildWeights();
+});
+$("wReset").addEventListener("click", () => {
+  state.weights = { ...DEFAULT_WEIGHTS };
+  settingsChanged();
+  buildWeights();
+  toast("Priorities reset");
+});
+
+// ---- Settings, share, backup ---------------------------------------------
+const settingsDlg = $("settings");
+let signedInAs = "";
+$("openSettings").addEventListener("click", () => {
+  $("nA").value = state.names.a;
+  $("nB").value = state.names.b;
+  $("shareOut").hidden = true;
+  $("accountText").textContent = `Signed in as ${signedInAs}. Houses sync live between everyone with access.`;
+  resetWipe();
+  settingsDlg.showModal();
+});
+for (const [id, key] of [["nA", "a"], ["nB", "b"]]) {
+  $(id).addEventListener("input", e => {
+    state.names[key] = e.target.value.trim() || DEFAULT_NAMES[key];
+    applyNames();
+    settingsChanged();
   });
+}
+document.querySelectorAll("dialog [data-close]").forEach(b => b.addEventListener("click", () => b.closest("dialog").close()));
+document.querySelectorAll("dialog").forEach(d => d.addEventListener("click", e => { if (e.target === d) d.close(); }));
 
-  function addHouse() {
-    const h = normalizeHouse({});
-    state.houses.push(h);
-    save(); render();
-    openEditor(h.id, true);
-  }
-  $("addHouse").addEventListener("click", addHouse);
-  document.addEventListener("click", e => { if (e.target.closest("[data-action=add]")) addHouse(); });
+function payload() {
+  return {
+    app: "house-hunt-scorecard", version: 1,
+    names: state.names, weights: state.weights, settingsUpdatedAt: state.settingsUpdatedAt,
+    houses: state.houses.filter(h => !h.example),
+  };
+}
 
-  // ---- Priorities --------------------------------------------------------
-  const weightsDlg = $("weights");
-  function buildWeights() {
-    $("wGroups").innerHTML = GROUPS.map(g => `
-      <div>
-        <h3 class="section-title"><span>${esc(g)}</span></h3>
-        <div class="w-list">
-          ${CRITERIA.filter(c => c.group === g).map(c => {
-            const p = state.weights[c.id];
-            return `<div class="w-row">
-              <span class="nm">${esc(c.name)}<small>Counts ${multiplier(p)}×</small></span>
-              <span class="seg" role="group" aria-label="Priority for ${esc(g)}: ${esc(c.name)}">
-                ${[1, 2, 3, 4, 5].map(v => `<button type="button" data-c="${c.id}" data-v="${v}" class="${v === p ? "sel" : ""}${v === c.p ? " def" : ""}" aria-pressed="${v === p}">${v}</button>`).join("")}
-              </span>
-            </div>`;
-          }).join("")}
-        </div>
-      </div>`).join("");
+const b64url = bytes => { let s = ""; bytes.forEach(b => s += String.fromCharCode(b)); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+const fromB64url = str => { const s = atob(str.replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(s, ch => ch.charCodeAt(0)); };
+async function pipeBytes(bytes, stream) {
+  const out = new Blob([bytes]).stream().pipeThrough(stream);
+  return new Uint8Array(await new Response(out).arrayBuffer());
+}
+async function encode(obj) {
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  if ("CompressionStream" in window) {
+    try { return "z" + b64url(await pipeBytes(bytes, new CompressionStream("deflate-raw"))); } catch (e) {}
   }
-  $("openWeights").addEventListener("click", () => { buildWeights(); weightsDlg.showModal(); });
-  $("wGroups").addEventListener("click", e => {
-    const b = e.target.closest("button[data-c]");
-    if (!b) return;
-    state.weights[b.dataset.c] = Number(b.dataset.v);
-    state.settingsUpdatedAt = Date.now();
-    save(); render();
-    const scroll = weightsDlg.querySelector(".d-body").scrollTop;
-    buildWeights();
-    weightsDlg.querySelector(".d-body").scrollTop = scroll;
-  });
-  $("wReset").addEventListener("click", () => {
-    state.weights = { ...DEFAULT_WEIGHTS };
-    state.settingsUpdatedAt = Date.now();
-    save(); render(); buildWeights();
-    toast("Priorities reset");
-  });
+  return "j" + b64url(bytes);
+}
+async function decode(str) {
+  const kind = str[0], bytes = fromB64url(str.slice(1));
+  const raw = kind === "z" ? await pipeBytes(bytes, new DecompressionStream("deflate-raw")) : bytes;
+  return JSON.parse(new TextDecoder().decode(raw));
+}
 
-  // ---- Settings, share, backup -----------------------------------------
-  const settingsDlg = $("settings");
-  $("openSettings").addEventListener("click", () => {
-    $("nA").value = state.names.a;
-    $("nB").value = state.names.b;
-    $("shareOut").hidden = true;
-    resetWipe();
-    settingsDlg.showModal();
-  });
-  for (const [id, key] of [["nA", "a"], ["nB", "b"]]) {
-    $(id).addEventListener("input", e => {
-      state.names[key] = e.target.value.trim() || DEFAULT_NAMES[key];
-      state.settingsUpdatedAt = Date.now();
-      save(); applyNames(); render();
-    });
+$("copyShare").addEventListener("click", async () => {
+  const data = payload();
+  if (!data.houses.length) { toast("Add a house first. Examples aren't shared."); return; }
+  const link = location.origin + location.pathname + "#d=" + await encode(data);
+  const out = $("shareOut");
+  out.value = link;
+  out.hidden = false;
+  try {
+    await navigator.clipboard.writeText(link);
+    toast(`Link copied with ${data.houses.length} house${data.houses.length === 1 ? "" : "s"}`);
+  } catch (e) {
+    out.focus(); out.select();
+    toast("Select the link below and copy it");
   }
-  document.querySelectorAll("dialog [data-close]").forEach(b => b.addEventListener("click", () => b.closest("dialog").close()));
-  document.querySelectorAll("dialog").forEach(d => d.addEventListener("click", e => { if (e.target === d) d.close(); }));
+});
 
-  function payload() {
-    return {
-      app: "house-hunt-scorecard", version: 1,
-      names: state.names, weights: state.weights, settingsUpdatedAt: state.settingsUpdatedAt,
-      houses: state.houses.filter(h => !h.example),
-    };
-  }
-
-  const b64url = bytes => { let s = ""; bytes.forEach(b => s += String.fromCharCode(b)); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
-  const fromB64url = str => { const s = atob(str.replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(s, ch => ch.charCodeAt(0)); };
-  async function pipeBytes(bytes, stream) {
-    const out = new Blob([bytes]).stream().pipeThrough(stream);
-    return new Uint8Array(await new Response(out).arrayBuffer());
-  }
-  async function encode(obj) {
-    const bytes = new TextEncoder().encode(JSON.stringify(obj));
-    if ("CompressionStream" in window) {
-      try { return "z" + b64url(await pipeBytes(bytes, new CompressionStream("deflate-raw"))); } catch (e) {}
+// Merge incoming houses with what's here. Per rating, the newer copy wins,
+// but a blank never overwrites a number, so two people rating on separate
+// devices both keep their scores.
+function applyMerge(data) {
+  const changed = [];
+  let added = 0, updated = 0;
+  for (const raw of (data.houses || [])) {
+    const inc = normalizeHouse(raw);
+    inc.example = false;
+    const idx = state.houses.findIndex(h => h.id === inc.id);
+    if (idx < 0) { state.houses.push(inc); changed.push(inc); added++; continue; }
+    const cur = state.houses[idx];
+    const [newer, older] = inc.updatedAt >= cur.updatedAt ? [inc, cur] : [cur, inc];
+    const merged = { ...older, ...newer, ratings: {} };
+    for (const f of ["address", "url", "notes"]) if (!newer[f]) merged[f] = older[f];
+    for (const f of ["price", "sqft"]) if (newer[f] == null) merged[f] = older[f];
+    for (const c of CRITERIA) {
+      merged.ratings[c.id] = {};
+      for (const w of WHO) merged.ratings[c.id][w] = newer.ratings[c.id][w] ?? older.ratings[c.id][w];
     }
-    return "j" + b64url(bytes);
+    merged.example = false;
+    merged.createdAt = Math.min(cur.createdAt, inc.createdAt);
+    merged.updatedAt = Math.max(cur.updatedAt, inc.updatedAt);
+    if (JSON.stringify(merged) !== JSON.stringify(cur)) { state.houses[idx] = merged; changed.push(merged); updated++; }
   }
-  async function decode(str) {
-    const kind = str[0], bytes = fromB64url(str.slice(1));
-    const raw = kind === "z" ? await pipeBytes(bytes, new DecompressionStream("deflate-raw")) : bytes;
-    return JSON.parse(new TextDecoder().decode(raw));
+  if (added) state.houses = state.houses.filter(h => !h.example);
+  if (changed.length) persist.many(changed);
+  if ((data.settingsUpdatedAt || 0) > state.settingsUpdatedAt) {
+    const n = normalizeState({ weights: data.weights, names: data.names });
+    state.weights = n.weights;
+    state.names = n.names;
+    state.settingsUpdatedAt = data.settingsUpdatedAt;
+    persist.settings();
   }
+  applyNames(); render();
+  return (added || updated) ? `Added ${added}, updated ${updated}` : "Already up to date";
+}
 
-  $("copyShare").addEventListener("click", async () => {
-    const data = payload();
-    if (!data.houses.length) { toast("Add a house first. Examples aren't shared."); return; }
-    const link = location.origin + location.pathname + "#d=" + await encode(data);
-    const out = $("shareOut");
-    out.value = link;
-    out.hidden = false;
-    try {
-      await navigator.clipboard.writeText(link);
-      toast(`Link copied with ${data.houses.length} house${data.houses.length === 1 ? "" : "s"}`);
-    } catch (e) {
-      out.focus(); out.select();
-      toast("Select the link below and copy it");
-    }
+$("exportBtn").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(payload(), null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `house-scores-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+$("importFile").addEventListener("change", async e => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (!Array.isArray(data.houses)) throw new Error("no houses");
+    toast(applyMerge(data));
+  } catch (err) {
+    toast("That file isn't a scorecard backup");
+  }
+});
+
+let wipeTimer = null;
+const wipeLabel = () => CLOUD ? "Erase all houses for everyone" : "Erase all houses on this device";
+function resetWipe() {
+  clearTimeout(wipeTimer);
+  $("wipeBtn").classList.remove("armed");
+  $("wipeBtn").textContent = wipeLabel();
+}
+$("wipeBtn").addEventListener("click", () => {
+  const btn = $("wipeBtn");
+  if (!btn.classList.contains("armed")) {
+    btn.classList.add("armed");
+    btn.textContent = "Tap again to erase everything";
+    wipeTimer = setTimeout(resetWipe, 4000);
+    return;
+  }
+  const ids = state.houses.map(h => h.id);
+  state.houses = [];
+  persist.wipe(ids);
+  render(); resetWipe();
+  toast("All houses erased");
+});
+
+// Incoming share link
+let pendingImport = null;
+async function checkHash() {
+  const m = location.hash.match(/^#d=([A-Za-z0-9_-]+)$/);
+  if (!m) return;
+  history.replaceState(null, "", location.pathname + location.search);
+  try {
+    pendingImport = await decode(m[1]);
+    const n = (pendingImport.houses || []).length;
+    $("importText").textContent = `This link has ${n} house${n === 1 ? "" : "s"}. Merge into your list? Ratings from both copies are kept.`;
+    $("importBanner").hidden = false;
+  } catch (e) {
+    toast("That share link looks incomplete. Copy it again.");
+  }
+}
+$("importAccept").addEventListener("click", () => {
+  if (pendingImport) toast(applyMerge(pendingImport));
+  pendingImport = null;
+  $("importBanner").hidden = true;
+});
+$("importDismiss").addEventListener("click", () => { pendingImport = null; $("importBanner").hidden = true; });
+window.addEventListener("hashchange", checkHash);
+
+// ---- Toast ----------------------------------------------------------------
+let toastTimer = null;
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+// ---- Cloud sync -----------------------------------------------------------
+const GATE = {
+  loading: ["Loading your houses…", ""],
+  signin: ["Sign in to see your houses", "Your scorecard syncs between your phones. Sign in with the Google account that has access."],
+  denied: ["This account doesn't have access", ""],
+  error: ["Couldn't connect", ""],
+};
+function showGate(mode, text) {
+  $("gate").hidden = !mode;
+  $("main").hidden = !!mode;
+  document.querySelector(".actions").hidden = !!mode;
+  if (!mode) return;
+  $("gateTitle").textContent = GATE[mode][0];
+  $("gateText").textContent = text ?? GATE[mode][1];
+  $("gateText").hidden = !$("gateText").textContent;
+  $("signInBtn").hidden = mode !== "signin";
+  $("gateSignOut").hidden = mode !== "denied";
+}
+function setSync(meta) {
+  const el = $("sync");
+  el.hidden = false;
+  el.className = "sync" + (meta.hasPendingWrites ? " saving" : meta.fromCache ? " offline" : "");
+  el.textContent = meta.hasPendingWrites ? "Saving…" : meta.fromCache ? "Offline, will sync" : "Synced";
+}
+
+function cloudPersist(fs, db) {
+  const col = fs.collection(db, "households", HOUSEHOLD, "houses");
+  const ref = id => fs.doc(col, id);
+  const settingsRef = fs.doc(db, "households", HOUSEHOLD);
+  const timers = new Map();
+  const fail = err => {
+    console.error(err);
+    toast(err && err.code === "permission-denied" ? "Your account can't save changes" : "Couldn't save. Check your connection.");
+  };
+  const plain = h => ({
+    address: h.address, url: h.url, price: h.price, sqft: h.sqft, notes: h.notes,
+    ratings: h.ratings, createdAt: h.createdAt, updatedAt: h.updatedAt,
   });
-
-  // Merge incoming houses with local ones. Per rating, the newer copy wins,
-  // but a blank never overwrites a number, so two people rating on separate
-  // devices both keep their scores.
-  function mergeIn(data) {
-    let added = 0, updated = 0;
-    for (const raw of (data.houses || [])) {
-      const inc = normalizeHouse(raw);
-      const idx = state.houses.findIndex(h => h.id === inc.id);
-      if (idx < 0) { state.houses.push(inc); added++; continue; }
-      const cur = state.houses[idx];
-      const [newer, older] = inc.updatedAt >= cur.updatedAt ? [inc, cur] : [cur, inc];
-      const merged = { ...older, ...newer, ratings: {} };
-      for (const f of ["address", "url", "notes"]) if (!newer[f]) merged[f] = older[f];
-      for (const f of ["price", "sqft"]) if (newer[f] == null) merged[f] = older[f];
-      for (const c of CRITERIA) {
-        merged.ratings[c.id] = {};
-        for (const w of WHO) merged.ratings[c.id][w] = newer.ratings[c.id][w] ?? older.ratings[c.id][w];
-      }
-      merged.example = false;
-      merged.createdAt = Math.min(cur.createdAt, inc.createdAt);
-      merged.updatedAt = Math.max(cur.updatedAt, inc.updatedAt);
-      if (JSON.stringify(merged) !== JSON.stringify(cur)) updated++;
-      state.houses[idx] = merged;
-    }
-    if ((data.settingsUpdatedAt || 0) > state.settingsUpdatedAt) {
-      const n = normalizeState({ weights: data.weights, names: data.names });
-      state.weights = n.weights;
-      state.names = n.names;
-      state.settingsUpdatedAt = data.settingsUpdatedAt;
-    }
-    if (added) state.houses = state.houses.filter(h => !h.example);
-    save(); applyNames(); render();
-    return { added, updated };
+  function flush(id) {
+    clearTimeout(timers.get(id));
+    timers.delete(id);
+    const fields = pending.get(id);
+    if (!fields) return;
+    pending.delete(id);
+    fs.updateDoc(ref(id), fields).catch(fail);
   }
-  const mergeMsg = ({ added, updated }) =>
-    (added || updated) ? `Added ${added}, updated ${updated}` : "Already up to date";
-
-  $("exportBtn").addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify(payload(), null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `house-scores-${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  });
-  $("importFile").addEventListener("change", async e => {
-    const file = e.target.files[0];
-    e.target.value = "";
-    if (!file) return;
-    try {
-      const data = JSON.parse(await file.text());
-      if (!Array.isArray(data.houses)) throw new Error("no houses");
-      toast(mergeMsg(mergeIn(data)));
-    } catch (err) {
-      toast("That file isn't a scorecard backup");
-    }
-  });
-
-  let wipeTimer = null;
-  function resetWipe() {
-    clearTimeout(wipeTimer);
-    $("wipeBtn").classList.remove("armed");
-    $("wipeBtn").textContent = "Erase all houses on this device";
-  }
-  $("wipeBtn").addEventListener("click", () => {
-    const btn = $("wipeBtn");
-    if (!btn.classList.contains("armed")) {
-      btn.classList.add("armed");
-      btn.textContent = "Tap again to erase everything";
-      wipeTimer = setTimeout(resetWipe, 4000);
-      return;
-    }
-    state.houses = [];
-    save(); render(); resetWipe();
-    toast("All houses erased");
-  });
-
-  // Incoming share link
-  let pending = null;
-  async function checkHash() {
-    const m = location.hash.match(/^#d=([A-Za-z0-9_-]+)$/);
-    if (!m) return;
-    history.replaceState(null, "", location.pathname + location.search);
-    try {
-      pending = await decode(m[1]);
-      const n = (pending.houses || []).length;
-      $("importText").textContent = `This link has ${n} house${n === 1 ? "" : "s"}. Merge into your list? Ratings from both copies are kept.`;
-      $("importBanner").hidden = false;
-    } catch (e) {
-      toast("That share link looks incomplete. Copy it again.");
+  async function batchAll(items, op) {
+    for (let i = 0; i < items.length; i += 400) {
+      const b = fs.writeBatch(db);
+      items.slice(i, i + 400).forEach(x => op(b, x));
+      await b.commit();
     }
   }
-  $("importAccept").addEventListener("click", () => {
-    if (pending) toast(mergeMsg(mergeIn(pending)));
-    pending = null;
-    $("importBanner").hidden = true;
-  });
-  $("importDismiss").addEventListener("click", () => { pending = null; $("importBanner").hidden = true; });
-  window.addEventListener("hashchange", checkHash);
+  return {
+    house(h, fields, debounce) {
+      pending.set(h.id, { ...(pending.get(h.id) || {}), ...fields, updatedAt: h.updatedAt });
+      clearTimeout(timers.get(h.id));
+      if (debounce) timers.set(h.id, setTimeout(() => flush(h.id), 500));
+      else flush(h.id);
+    },
+    flushAll() { [...pending.keys()].forEach(flush); },
+    add(h) {
+      unconfirmed.set(h.id, h);
+      fs.setDoc(ref(h.id), plain(h)).catch(fail);
+    },
+    remove(id) {
+      clearTimeout(timers.get(id));
+      pending.delete(id);
+      unconfirmed.delete(id);
+      fs.deleteDoc(ref(id)).catch(fail);
+    },
+    many(list) { batchAll(list, (b, h) => b.set(ref(h.id), plain(h))).catch(fail); },
+    wipe(ids) { batchAll(ids, (b, id) => b.delete(ref(id))).catch(fail); },
+    settings() {
+      clearTimeout(settingsTimer);
+      settingsTimer = setTimeout(() => {
+        settingsTimer = null;
+        fs.setDoc(settingsRef, { names: state.names, weights: state.weights, settingsUpdatedAt: state.settingsUpdatedAt }, { merge: true }).catch(fail);
+      }, 400);
+    },
+  };
+}
 
-  // ---- Toast -------------------------------------------------------------
-  let toastTimer = null;
-  function toast(msg) {
-    const t = $("toast");
-    t.textContent = msg;
-    t.classList.add("show");
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+function applyCloudHouses(docs) {
+  const houses = docs.map(normalizeHouse);
+  for (const h of houses) {
+    unconfirmed.delete(h.id);
+    const p = pending.get(h.id);
+    if (p) applyFields(h, p);
   }
+  for (const h of unconfirmed.values()) houses.push(h);
+  state.houses = houses;
+  if (current) {
+    const fresh = houses.find(h => h.id === current.id);
+    if (fresh) { current = fresh; syncEditor(); }
+    else {
+      current = null;
+      closeEditor();
+      toast("That house was deleted on another device");
+    }
+  }
+  render();
+}
 
-  // ---- Boot --------------------------------------------------------------
+function applyCloudSettings(d) {
+  if (settingsTimer) return; // our own edit is about to be written
+  const n = normalizeState({ names: d.names, weights: d.weights });
+  const weightsChanged = JSON.stringify(n.weights) !== JSON.stringify(state.weights);
+  state.names = n.names;
+  state.weights = n.weights;
+  state.settingsUpdatedAt = Number(d.settingsUpdatedAt) || 0;
   applyNames();
   render();
-  checkHash();
+  if (weightsDlg.open && weightsChanged) buildWeights();
+  if (current && weightsChanged) { buildRatings(); refreshEditorScores(); }
+  if (settingsDlg.open) {
+    if (document.activeElement !== $("nA")) $("nA").value = state.names.a;
+    if (document.activeElement !== $("nB")) $("nB").value = state.names.b;
+  }
+}
 
-  // exposed for quick checks in the console
-  window.__scorecard = { score, CRITERIA, addressFromUrl };
-})();
+function offerMigration() {
+  const local = ((localSaved && localSaved.houses) || []).filter(h => !h.example);
+  if (!local.length || prefs.migrated) return;
+  $("migrateText").textContent = `This browser has ${local.length} house${local.length === 1 ? "" : "s"} saved from before sync was turned on. Add ${local.length === 1 ? "it" : "them"} to your shared list?`;
+  $("migrateBanner").hidden = false;
+  const done = () => { prefs.migrated = true; savePrefs(); $("migrateBanner").hidden = true; };
+  $("migrateYes").onclick = () => { toast(applyMerge(localSaved)); done(); };
+  $("migrateNo").onclick = done;
+}
+
+async function startCloud() {
+  showGate("loading");
+  $("shareSection").hidden = true;
+  $("accountSection").hidden = false;
+  $("storageNote").textContent = "Houses sync live between everyone signed in with an approved Google account. Changes made without signal sync when you're back online.";
+
+  let appMod, A, fs;
+  try {
+    const base = `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/`;
+    [appMod, A, fs] = await Promise.all([
+      import(base + "firebase-app.js"),
+      import(base + "firebase-auth.js"),
+      import(base + "firebase-firestore.js"),
+    ]);
+  } catch (e) {
+    console.error(e);
+    showGate("error", "The sync service didn't load. Check your connection and reload the page.");
+    return;
+  }
+  const app = appMod.initializeApp(FIREBASE_CONFIG);
+  const auth = A.getAuth(app);
+  let db;
+  try {
+    db = fs.initializeFirestore(app, { localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }) });
+  } catch (e) {
+    db = fs.getFirestore(app);
+  }
+  persist = cloudPersist(fs, db);
+
+  let unsubs = [];
+  const stop = () => { unsubs.forEach(u => u()); unsubs = []; };
+  const onError = user => err => {
+    console.error(err);
+    stop();
+    if (err.code === "permission-denied") {
+      showGate("denied", `You're signed in as ${user.email}, which isn't on the access list. Sign in with a different account, or add this address to the Firestore rules.`);
+    } else {
+      showGate("error", `Sync stopped (${err.code || err.message}). Reload the page to try again.`);
+    }
+  };
+
+  $("signInBtn").addEventListener("click", async () => {
+    const provider = new A.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    try {
+      await A.signInWithPopup(auth, provider);
+    } catch (e) {
+      if (e.code === "auth/popup-blocked" || e.code === "auth/operation-not-supported-in-this-environment") {
+        A.signInWithRedirect(auth, provider);
+      } else if (e.code === "auth/unauthorized-domain") {
+        toast("Add this site's domain under Firebase → Authentication → Settings → Authorized domains");
+      } else if (e.code !== "auth/popup-closed-by-user" && e.code !== "auth/cancelled-popup-request") {
+        toast(`Sign-in didn't finish (${e.code || e.message})`);
+      }
+    }
+  });
+  A.getRedirectResult(auth).catch(e => console.error(e));
+  const signOut = () => { stop(); persist.flushAll(); settingsDlg.close(); A.signOut(auth); };
+  $("signOutBtn").addEventListener("click", signOut);
+  $("gateSignOut").addEventListener("click", signOut);
+
+  A.onAuthStateChanged(auth, user => {
+    stop();
+    if (!user) {
+      signedInAs = "";
+      state.houses = [];
+      render();
+      showGate("signin");
+      return;
+    }
+    signedInAs = user.email || "your Google account";
+    showGate("loading");
+    let first = true;
+    unsubs.push(fs.onSnapshot(fs.collection(db, "households", HOUSEHOLD, "houses"), { includeMetadataChanges: true }, snap => {
+      applyCloudHouses(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setSync(snap.metadata);
+      if (first) { first = false; showGate(null); offerMigration(); }
+    }, onError(user)));
+    unsubs.push(fs.onSnapshot(fs.doc(db, "households", HOUSEHOLD), snap => {
+      if (snap.exists()) applyCloudSettings(snap.data());
+    }, onError(user)));
+  });
+
+  document.addEventListener("visibilitychange", () => { if (document.hidden) persist.flushAll(); });
+}
+
+// ---- Boot -----------------------------------------------------------------
+applyNames();
+render();
+checkHash();
+if (CLOUD) startCloud();
+
+// exposed for quick checks in the console
+window.__scorecard = { score, CRITERIA, addressFromUrl };
 </script>
 </body>
 </html>

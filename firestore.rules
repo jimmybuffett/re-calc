@@ -1,0 +1,25 @@
+rules_version = '2';
+
+// Only the Google accounts listed here can read or change houses.
+// Replace both addresses (lowercase), then paste this whole file into
+// Firebase console → Firestore Database → Rules and click Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isUs() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() in [
+          'tim@example.com',
+          'sarah@example.com'
+        ];
+    }
+
+    match /households/{household} {
+      allow read, write: if isUs();
+
+      match /{document=**} {
+        allow read, write: if isUs();
+      }
+    }
+  }
+}
