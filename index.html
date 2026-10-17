@@ -280,9 +280,9 @@ textarea.input { min-height: 72px; resize: vertical; }
 .rate-row { display: flex; align-items: center; gap: 8px; --who: var(--a); --on-who: var(--on-a); }
 .rate-row.rb { --who: var(--b); --on-who: var(--on-b); }
 .rate-row .who { width: 52px; flex: none; font-size: 12.5px; font-weight: 700; color: var(--who); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pips { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 3px; }
+.pips { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
 .pip {
-  height: 34px; padding: 0; border: 1px solid var(--line); border-radius: 7px;
+  height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 7px;
   background: var(--surface-2); color: var(--muted);
   font: 600 12.5px var(--mono); font-variant-numeric: tabular-nums;
   transition: background .1s, color .1s;
@@ -362,7 +362,7 @@ main { display: contents; }
   <header class="top">
     <div class="brand">
       <h1>House Hunt Scorecard</h1>
-      <p>21 criteria, rated 1–10 by <span class="who-a" data-name="a">Tim</span> and <span class="who-b" data-name="b">Sarah</span>, weighted by priority and scored out of 100.</p>
+      <p>21 criteria, rated 1–5 by <span class="who-a" data-name="a">Tim</span> and <span class="who-b" data-name="b">Sarah</span>, weighted by priority and scored out of 100.</p>
     </div>
     <div class="actions">
       <button class="btn ghost" id="openWeights" type="button">
@@ -436,7 +436,7 @@ main { display: contents; }
   </main>
 
   <footer class="foot">
-    <p><strong>How the score works.</strong> Each criterion's two ratings are averaged. Averages are combined using priority multipliers (priority 1 counts 5×, priority 5 counts 1×), then mapped so all 1s scores 1 and all 10s scores 100. Unrated criteria are left out until someone rates them.</p>
+    <p><strong>How the score works.</strong> Each criterion's two ratings are averaged. Averages are combined using priority multipliers (priority 1 counts 5×, priority 5 counts 1×), then mapped so all 1s scores 1 and all 5s scores 100. Unrated criteria are left out until someone rates them.</p>
     <p id="storageNote">Your houses are saved in this browser. To move them to another phone or laptop, use <em>Names &amp; data → Copy share link</em>.</p>
   </footer>
 </div>
@@ -589,9 +589,9 @@ const CRITERIA = [
   { id: "base_storage",    group: "Basement", name: "Storage",                     p: 3 },
   { id: "charm",           group: "The house", name: "Charm / vibe",               p: 1 },
   { id: "climate",         group: "The house", name: "Climate control",            p: 1, hint: "HVAC, AC, drafts" },
-  { id: "maintenance",     group: "The house", name: "Required maintenance",       p: 1, hint: "10 = nothing to fix" },
+  { id: "maintenance",     group: "The house", name: "Required maintenance",       p: 1, hint: "5 = nothing to fix" },
   { id: "condition",       group: "The house", name: "Condition",                  p: 3 },
-  { id: "stairs",          group: "The house", name: "Stairs",                     p: 2, hint: "10 = easy to live with" },
+  { id: "stairs",          group: "The house", name: "Stairs",                     p: 2, hint: "5 = easy to live with" },
   { id: "closets",         group: "The house", name: "Closets",                    p: 2 },
   { id: "outdoor",         group: "Outside",  name: "Outdoor space",               p: 2 },
   { id: "parking",         group: "Outside",  name: "Parking",                     p: 3 },
@@ -602,6 +602,7 @@ const DEFAULT_NAMES = { a: "Tim", b: "Sarah" };
 const STORE_KEY = "house-hunt-scorecard:v1";
 const PREFS_KEY = "house-hunt-scorecard:prefs";
 const WHO = ["a", "b"];
+const SCALE = 5;            // each rating is 1…SCALE
 
 // ---- Scoring --------------------------------------------------------------
 const multiplier = p => 6 - p; // priority 1 → ×5 … priority 5 → ×1
@@ -610,7 +611,7 @@ function score(house, weights, who) {
   let num = 0, den = 0;
   for (const c of CRITERIA) {
     const r = house.ratings[c.id] || {};
-    const vals = (who ? [r[who]] : [r.a, r.b]).filter(v => v >= 1 && v <= 10);
+    const vals = (who ? [r[who]] : [r.a, r.b]).filter(v => v >= 1 && v <= SCALE);
     if (!vals.length) continue;
     const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
     const w = multiplier(weights[c.id] ?? c.p);
@@ -618,7 +619,7 @@ function score(house, weights, who) {
     den += w;
   }
   if (!den) return null;
-  return 1 + (num / den - 1) * 99 / 9;
+  return 1 + (num / den - 1) * 99 / (SCALE - 1);
 }
 function critAvg(house, id) {
   const r = house.ratings[id] || {};
@@ -641,7 +642,7 @@ const toInt = v => {
   const n = typeof v === "number" ? v : Number(String(v).replace(/[^0-9.]/g, ""));
   return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
 };
-const validRating = v => (Number.isInteger(v) && v >= 1 && v <= 10) ? v : null;
+const validRating = v => (Number.isInteger(v) && v >= 1 && v <= SCALE) ? v : null;
 
 function normalizeHouse(h) {
   const now = Date.now();
@@ -688,14 +689,14 @@ function exampleHouses() {
   };
   return [
     mk("ex1", "Craftsman bungalow", 615000, 1980,
-      [9, 8, 7, 8, 7, 6, 8, 7, 6, 5, 4, 5, 6, 10, 6, 7, 7, 6, 5, 8, 6],
-      [9, 7, 8, 9, 7, 5, 7, 8, 6, 6, 4, 4, 5, 9, 7, 6, 8, 7, 6, 9, 7], 2),
+      [5, 4, 4, 4, 4, 3, 4, 4, 3, 3, 2, 3, 3, 5, 3, 4, 4, 3, 3, 4, 3],
+      [5, 4, 4, 5, 4, 3, 4, 4, 3, 3, 2, 2, 3, 5, 4, 3, 4, 4, 3, 5, 4], 2),
     mk("ex2", "Brick colonial", 689000, 2450,
-      [8, 6, 9, 7, 8, 9, 7, 8, 8, 8, 8, 6, 8, 6, 9, 8, 9, 5, 8, 6, 9],
-      [7, 6, 8, 7, 9, 8, 8, 9, 8, 7, 7, 7, 7, 5, 8, 8, 8, 6, 9, 7, 8], 5),
+      [4, 3, 5, 4, 4, 5, 4, 4, 4, 4, 4, 3, 4, 3, 5, 4, 5, 3, 4, 3, 5],
+      [4, 3, 4, 4, 5, 4, 4, 5, 4, 4, 4, 4, 4, 3, 4, 4, 4, 3, 5, 4, 4], 5),
     mk("ex3", "Townhouse near the park", 529000, 1640,
-      [7, 10, 5, 6, 6, 4, 5, 6, 5, 9, 6, 7, 3, 7, 8, 9, 9, 3, 4, 4, null],
-      [8, 9, 4, 6, 7, null, 5, 5, 6, 9, 5, 6, 4, 8, 8, 9, 8, 4, 4, 5, null], 9),
+      [4, 5, 3, 3, 3, 2, 3, 3, 3, 5, 3, 4, 2, 4, 4, 5, 5, 2, 2, 2, null],
+      [4, 5, 2, 3, 4, null, 3, 3, 3, 5, 3, 3, 2, 4, 4, 5, 4, 2, 2, 3, null], 9),
   ];
 }
 
@@ -888,10 +889,10 @@ function touch(fields, debounce = false) {
 }
 
 function buildRatings() {
-  const pips = (cid, who, val) => Array.from({ length: 10 }, (_, i) => {
+  const pips = (cid, who, val) => Array.from({ length: SCALE }, (_, i) => {
     const v = i + 1;
     const cls = val == null ? "" : v === val ? " sel" : v < val ? " fill" : "";
-    return `<button type="button" class="pip${cls}" data-c="${cid}" data-w="${who}" data-v="${v}" aria-pressed="${v === val}" aria-label="${esc(state.names[who])}: ${v} of 10">${v}</button>`;
+    return `<button type="button" class="pip${cls}" data-c="${cid}" data-w="${who}" data-v="${v}" aria-pressed="${v === val}" aria-label="${esc(state.names[who])}: ${v} of ${SCALE}">${v}</button>`;
   }).join("");
   $("edRatings").innerHTML = GROUPS.map(g => `
     <div class="group">

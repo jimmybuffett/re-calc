@@ -10,7 +10,9 @@ service cloud.firestore {
         && request.auth.token.email_verified == true
         && request.auth.token.email.lower() in [
           'tim.jacques@gmail.com',
-          'sarahbecherer@gmail.com'
+          'sarahbecherer@gmail.com',
+          'timajacquessr@gmail.com',
+          'tajdtj@gmail.com'
         ];
     }
 

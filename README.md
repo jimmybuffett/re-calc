@@ -1,6 +1,6 @@
 # House Hunt Scorecard
 
-A weighted scorecard for comparing houses. Two people rate 21 criteria from 1 to 10, the ratings are averaged, weighted by priority, and turned into a score from 1 to 100.
+A weighted scorecard for comparing houses. Two people rate 21 criteria from 1 to 5, the ratings are averaged, weighted by priority, and turned into a score from 1 to 100.
 
 Everything lives in `index.html`, with no build step.
 
@@ -8,7 +8,7 @@ Everything lives in `index.html`, with no build step.
 
 - Each criterion has a priority from 1 (must-have) to 5 (nice-to-have). Priority 1 counts 5× and priority 5 counts 1×.
 - Each criterion's score is the average of both people's ratings. If only one person has rated it, that rating is used.
-- Weighted average (1–10) → score: `1 + (avg − 1) × 99 / 9`, so all 1s = 1 and all 10s = 100.
+- Weighted average (1–5) → score: `1 + (avg − 1) × 99 / 4`, so all 1s = 1 and all 5s = 100.
 - Unrated criteria are skipped. Each card shows how many of the 42 ratings are filled in.
 
 ## Sync (Firebase)
