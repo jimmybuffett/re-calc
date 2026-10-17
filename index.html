@@ -1,0 +1,1152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>House Hunt Scorecard</title>
+<meta name="description" content="Weighted scorecard for comparing houses, rated by two people.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: a ranked stack of listing cards; one sheet (full-screen on phones) for rating a house. */
+:root {
+  --bg: #eef2f0;
+  --surface: #ffffff;
+  --surface-2: #f6f8f7;
+  --ink: #14242b;
+  --muted: #5a6b70;
+  --line: #d8e0dd;
+  --accent: #14242b;
+  --on-accent: #ffffff;
+  --a: #12705f;
+  --on-a: #ffffff;
+  --b: #6a4fc0;
+  --on-b: #ffffff;
+  --gold: #f0b43a;
+  --on-gold: #2a1d00;
+  --good: #23784a;
+  --mid: #a86d12;
+  --low: #b23f37;
+  --shadow: 0 1px 2px rgb(20 36 43 / .06), 0 4px 16px rgb(20 36 43 / .06);
+  --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --body: "Figtree", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1619; --surface: #162226; --surface-2: #1b292e; --ink: #e4ecea; --muted: #93a5a8;
+    --line: #2a3b40; --accent: #e4ecea; --on-accent: #0e1619;
+    --a: #45bfa9; --on-a: #062019; --b: #a990f7; --on-b: #1a1033;
+    --gold: #f2bd4e; --on-gold: #2a1d00; --good: #5cc78c; --mid: #e3a940; --low: #ec7c72;
+    --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 6px 20px rgb(0 0 0 / .25);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1619; --surface: #162226; --surface-2: #1b292e; --ink: #e4ecea; --muted: #93a5a8;
+  --line: #2a3b40; --accent: #e4ecea; --on-accent: #0e1619;
+  --a: #45bfa9; --on-a: #062019; --b: #a990f7; --on-b: #1a1033;
+  --gold: #f2bd4e; --on-gold: #2a1d00; --good: #5cc78c; --mid: #e3a940; --low: #ec7c72;
+  --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 6px 20px rgb(0 0 0 / .25);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 15px/1.5 var(--body);
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+body:has(dialog[open]) { overflow: hidden; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--a); outline-offset: 2px; }
+[hidden] { display: none !important; }
+a { color: inherit; }
+
+.wrap {
+  max-width: 920px;
+  margin: 0 auto;
+  padding-block: 20px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid;
+  gap: 20px;
+}
+
+/* Header */
+.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 16px; }
+.brand h1 {
+  margin: 0;
+  font: 800 clamp(28px, 6vw, 40px)/1 var(--display);
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+.brand p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+.brand .who-a { color: var(--a); font-weight: 600; }
+.brand .who-b { color: var(--b); font-weight: 600; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 40px; padding: 0 14px;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface); color: var(--ink);
+  font-weight: 600; font-size: 14px; white-space: nowrap;
+}
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.btn.primary:hover { opacity: .9; }
+.btn.ghost { background: transparent; }
+.btn.danger { color: var(--low); }
+.btn.danger.armed { background: var(--low); color: var(--surface); border-color: var(--low); }
+.btn svg { width: 16px; height: 16px; flex: none; }
+
+/* Toolbar + banners */
+.bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; color: var(--muted); font-size: 14px; }
+.bar label { display: inline-flex; align-items: center; gap: 8px; }
+.bar select {
+  min-height: 36px; padding: 0 10px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--surface);
+}
+.banner {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px;
+  padding: 12px 14px; border-radius: 12px;
+  background: color-mix(in srgb, var(--gold) 18%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--gold) 55%, var(--line));
+  font-size: 14px;
+}
+.banner p { margin: 0; min-width: 0; flex: 1 1 240px; }
+
+/* House cards */
+.list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.house {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 4px 14px;
+  align-items: center;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: border-color .15s, transform .15s;
+}
+.house:hover { border-color: var(--muted); }
+.house:active { transform: scale(.995); }
+.rank {
+  grid-row: span 2;
+  align-self: start;
+  width: 34px; height: 34px; border-radius: 50%;
+  display: grid; place-items: center;
+  font: 600 14px var(--mono);
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--muted);
+}
+.rank.first { background: var(--gold); color: var(--on-gold); border-color: var(--gold); }
+.h-main { min-width: 0; }
+.h-name {
+  margin: 0; font: 700 18px/1.25 var(--display); letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.tag {
+  display: inline-block; vertical-align: 2px; margin-left: 6px;
+  padding: 1px 7px; border-radius: 99px;
+  font: 600 11px/1.6 var(--body); letter-spacing: .04em; text-transform: uppercase;
+  background: var(--surface-2); color: var(--muted); border: 1px solid var(--line);
+}
+.h-meta { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 4px; font-size: 13.5px; color: var(--muted); }
+.h-meta .num { font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--ink); }
+.h-meta a { color: var(--a); font-weight: 600; text-decoration: none; }
+.h-meta a:hover { text-decoration: underline; }
+.h-score { grid-row: span 2; text-align: right; align-self: start; }
+.big {
+  font: 600 34px/1 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -0.03em;
+}
+.big small { font-size: 13px; color: var(--muted); letter-spacing: 0; margin-left: 1px; }
+.big.good { color: var(--good); } .big.mid { color: var(--mid); } .big.low { color: var(--low); }
+.big.none { color: var(--muted); font-size: 22px; }
+.h-sub { grid-column: 2; min-width: 0; display: grid; gap: 6px; margin-top: 6px; }
+
+/* Score track: 1–100 rail with each person's marker */
+.track { position: relative; height: 18px; }
+.track .rail { position: absolute; left: 0; right: 0; top: 8px; height: 2px; background: var(--line); border-radius: 2px; }
+.track .fill { position: absolute; left: 0; top: 7px; height: 4px; border-radius: 4px; background: var(--ink); opacity: .75; }
+.track .dot {
+  position: absolute; top: 3px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%;
+  border: 2px solid var(--surface);
+}
+.track .dot.a { background: var(--a); } .track .dot.b { background: var(--b); }
+.legend { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 12.5px; color: var(--muted); }
+.legend b { font: 600 12.5px var(--mono); font-variant-numeric: tabular-nums; }
+.legend .la b { color: var(--a); } .legend .lb b { color: var(--b); }
+.legend .sw { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
+.legend .la .sw { background: var(--a); } .legend .lb .sw { background: var(--b); }
+
+.empty {
+  padding: 40px 20px; text-align: center; color: var(--muted);
+  border: 1.5px dashed var(--line); border-radius: 14px; background: var(--surface);
+}
+.empty h2 { margin: 0 0 6px; font: 700 20px var(--display); color: var(--ink); }
+.empty p { margin: 0 auto 16px; max-width: 42ch; }
+
+.foot { color: var(--muted); font-size: 13px; line-height: 1.6; max-width: 70ch; }
+.foot p { margin: 0 0 6px; }
+
+/* Dialogs */
+dialog {
+  padding: 0; border: 1px solid var(--line); border-radius: 18px;
+  background: var(--bg); color: var(--ink);
+  width: min(880px, calc(100% - 32px));
+  max-height: calc(100% - 40px);
+  box-shadow: 0 20px 60px rgb(0 0 0 / .25);
+  overflow: hidden;
+}
+dialog[open] { display: flex; flex-direction: column; }
+dialog::backdrop { background: rgb(10 20 24 / .5); }
+.d-head {
+  flex: none;
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px;
+  background: var(--surface); border-bottom: 1px solid var(--line);
+}
+.d-head h2 { margin: 0; font: 700 19px/1.2 var(--display); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.d-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 18px; display: grid; gap: 22px; align-content: start; }
+.d-foot { flex: none; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 12px 18px; background: var(--surface); border-top: 1px solid var(--line); }
+.d-score { display: flex; align-items: baseline; gap: 12px; flex: none; }
+.d-score .big { font-size: 30px; }
+.d-score .legend { flex-direction: column; gap: 0; text-align: right; }
+@media (max-width: 640px) {
+  dialog {
+    width: 100%; max-width: 100%; height: 100%; max-height: 100%;
+    margin: 0; border-radius: 0; border: 0;
+  }
+  .d-head { padding-top: max(14px, env(safe-area-inset-top, 0px)); }
+  .d-head, .d-body, .d-foot {
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .d-foot { padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)); }
+}
+
+/* Form fields */
+.section-title {
+  margin: 0 0 10px; font: 600 12px var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+  display: flex; justify-content: space-between; gap: 12px;
+}
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.field { display: grid; gap: 5px; min-width: 0; }
+.field.wide { grid-column: 1 / -1; }
+.field label { font-size: 13px; font-weight: 600; }
+.field .hint { font-size: 12.5px; color: var(--muted); }
+.input {
+  width: 100%; min-height: 44px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+}
+.input:focus { border-color: var(--a); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--a) 22%, transparent); }
+.input.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+textarea.input { min-height: 72px; resize: vertical; }
+.with-prefix { position: relative; }
+.with-prefix span { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-family: var(--mono); pointer-events: none; }
+.with-prefix .input { padding-left: 26px; }
+.url-row { display: flex; gap: 8px; }
+.url-row .input { flex: 1; min-width: 0; }
+.derived { font: 500 13px var(--mono); color: var(--muted); }
+
+/* Criteria */
+.group + .group { margin-top: 4px; }
+.crits { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); gap: 10px; }
+.crit {
+  padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  display: grid; gap: 8px; min-width: 0;
+}
+.crit-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.crit-name { font-weight: 700; font-size: 15px; min-width: 0; }
+.crit-hint { font-size: 12.5px; color: var(--muted); }
+.crit-avg { margin-left: auto; font: 600 14px var(--mono); font-variant-numeric: tabular-nums; flex: none; }
+.crit-avg.empty-avg { color: var(--muted); font-weight: 500; }
+.pri {
+  flex: none; font: 600 11px/1.7 var(--mono); padding: 0 6px; border-radius: 6px;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--muted);
+}
+.rate-row { display: flex; align-items: center; gap: 8px; --who: var(--a); --on-who: var(--on-a); }
+.rate-row.rb { --who: var(--b); --on-who: var(--on-b); }
+.rate-row .who { width: 52px; flex: none; font-size: 12.5px; font-weight: 700; color: var(--who); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pips { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 3px; }
+.pip {
+  height: 34px; padding: 0; border: 1px solid var(--line); border-radius: 7px;
+  background: var(--surface-2); color: var(--muted);
+  font: 600 12.5px var(--mono); font-variant-numeric: tabular-nums;
+  transition: background .1s, color .1s;
+}
+.pip:hover { border-color: var(--who); }
+.pip.fill { background: color-mix(in srgb, var(--who) 16%, var(--surface)); border-color: color-mix(in srgb, var(--who) 30%, var(--line)); color: var(--ink); }
+.pip.sel { background: var(--who); border-color: var(--who); color: var(--on-who); }
+
+/* Weights dialog */
+.scale-note { margin: 0; font-size: 13.5px; color: var(--muted); max-width: 62ch; }
+.w-list { display: grid; gap: 6px; }
+.w-row {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px;
+  padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+}
+.w-row .nm { font-weight: 600; min-width: 0; }
+.w-row .nm small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+.seg { display: inline-grid; grid-template-columns: repeat(5, 40px); gap: 3px; }
+.seg button {
+  height: 34px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-2);
+  font: 600 13px var(--mono); color: var(--muted);
+}
+.seg button.sel { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.seg button.def:not(.sel) { border-style: dashed; border-color: var(--muted); }
+
+/* Settings */
+.stack { display: grid; gap: 10px; }
+.row-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.share-out { font-family: var(--mono); font-size: 12px; }
+
+/* Toast */
+.toast {
+  position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%) translateY(20px);
+  max-width: calc(100% - 32px);
+  padding: 10px 16px; border-radius: 10px; background: var(--ink); color: var(--bg);
+  font-weight: 600; font-size: 14px; box-shadow: var(--shadow);
+  opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 100;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+@media (max-width: 520px) {
+  .house { grid-template-columns: minmax(0, 1fr) auto; padding: 14px; }
+  .rank { grid-row: auto; width: 28px; height: 28px; font-size: 12.5px; position: absolute; }
+  .house { position: relative; }
+  .h-main { padding-left: 38px; min-height: 28px; }
+  .h-sub { grid-column: 1 / -1; }
+  .h-score { grid-row: auto; }
+  .big { font-size: 30px; }
+  .fields { grid-template-columns: minmax(0, 1fr); }
+  .seg { grid-template-columns: repeat(5, 36px); }
+  .top .actions { width: 100%; }
+  .top .actions .btn { flex: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1>House Hunt Scorecard</h1>
+      <p>21 criteria, rated 1–10 by <span class="who-a" data-name="a">Tim</span> and <span class="who-b" data-name="b">Sarah</span>, weighted by priority and scored out of 100.</p>
+    </div>
+    <div class="actions">
+      <button class="btn ghost" id="openWeights" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+        Priorities
+      </button>
+      <button class="btn ghost" id="openSettings" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+        Names &amp; data
+      </button>
+      <button class="btn primary" id="addHouse" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        Add house
+      </button>
+    </div>
+  </header>
+
+  <div class="banner" id="importBanner" hidden>
+    <p id="importText"></p>
+    <div class="row-btns">
+      <button class="btn ghost" id="importDismiss" type="button">Ignore</button>
+      <button class="btn primary" id="importAccept" type="button">Merge into my list</button>
+    </div>
+  </div>
+
+  <div class="banner" id="exampleBanner" hidden>
+    <p>These are example houses so you can see how scoring works. Add your own, then remove these.</p>
+    <button class="btn" id="removeExamples" type="button">Remove examples</button>
+  </div>
+
+  <div class="bar" id="bar">
+    <span id="count"></span>
+    <label for="sort">Sort by
+      <select id="sort">
+        <option value="score">Score (high to low)</option>
+        <option value="price">Price (low to high)</option>
+        <option value="ppsf">Price per sq ft (low to high)</option>
+        <option value="newest">Recently updated</option>
+      </select>
+    </label>
+  </div>
+
+  <ol class="list" id="list"></ol>
+
+  <div class="empty" id="empty" hidden>
+    <h2>No houses yet</h2>
+    <p>Add a house after a showing, paste the Zillow or Compass link, and rate each criterion together.</p>
+    <button class="btn primary" type="button" data-action="add">Add your first house</button>
+  </div>
+
+  <footer class="foot">
+    <p><strong>How the score works.</strong> Each criterion's two ratings are averaged. Averages are combined using priority multipliers (priority 1 counts 5×, priority 5 counts 1×), then mapped so all 1s scores 1 and all 10s scores 100. Unrated criteria are left out until someone rates them.</p>
+    <p>Your houses are saved in this browser. To move them to another phone or laptop, use <em>Names &amp; data → Copy share link</em>.</p>
+  </footer>
+</div>
+
+<!-- House editor -->
+<dialog id="editor" aria-labelledby="edTitle">
+  <div class="d-head">
+    <h2 id="edTitle">New house</h2>
+    <div class="d-score">
+      <div class="legend">
+        <span class="la"><span class="sw"></span><span data-name="a">Tim</span> <b id="edA">–</b></span>
+        <span class="lb"><span class="sw"></span><span data-name="b">Sarah</span> <b id="edB">–</b></span>
+      </div>
+      <div class="big none" id="edScore">–</div>
+    </div>
+  </div>
+  <div class="d-body" id="edBody">
+    <section>
+      <h3 class="section-title">Listing</h3>
+      <div class="fields">
+        <div class="field wide">
+          <label for="fUrl">Compass or Zillow link</label>
+          <div class="url-row">
+            <input class="input" id="fUrl" type="url" inputmode="url" placeholder="https://www.zillow.com/homedetails/…" autocomplete="off">
+            <a class="btn" id="fUrlOpen" href="#" target="_blank" rel="noopener" hidden>Open</a>
+          </div>
+        </div>
+        <div class="field wide">
+          <label for="fName">Address or nickname</label>
+          <input class="input" id="fName" type="text" placeholder="1842 W Wolfram St" autocomplete="off">
+          <span class="hint">Filled in from the link when it can be.</span>
+        </div>
+        <div class="field">
+          <label for="fPrice">Price</label>
+          <div class="with-prefix"><span>$</span><input class="input num" id="fPrice" type="text" inputmode="numeric" placeholder="585,000" autocomplete="off"></div>
+        </div>
+        <div class="field">
+          <label for="fSqft">Finished sq ft</label>
+          <input class="input num" id="fSqft" type="text" inputmode="numeric" placeholder="2,100" autocomplete="off">
+          <span class="derived" id="fPpsf"></span>
+        </div>
+        <div class="field wide">
+          <label for="fNotes">Notes</label>
+          <textarea class="input" id="fNotes" placeholder="Showing notes, questions for the agent…"></textarea>
+        </div>
+      </div>
+    </section>
+    <section id="edRatings"></section>
+  </div>
+  <div class="d-foot">
+    <button class="btn danger" id="edDelete" type="button">Delete house</button>
+    <button class="btn primary" id="edDone" type="button">Done</button>
+  </div>
+</dialog>
+
+<!-- Priorities -->
+<dialog id="weights" aria-labelledby="wTitle">
+  <div class="d-head">
+    <h2 id="wTitle">Priorities</h2>
+    <button class="btn primary" type="button" data-close>Done</button>
+  </div>
+  <div class="d-body">
+    <p class="scale-note">1 is a must-have and counts 5× in the score. 5 is nice-to-have and counts 1×. Dashed outlines mark your original priority. Changes re-rank every house right away.</p>
+    <div id="wGroups" class="stack"></div>
+  </div>
+  <div class="d-foot">
+    <button class="btn" id="wReset" type="button">Reset to original priorities</button>
+  </div>
+</dialog>
+
+<!-- Settings -->
+<dialog id="settings" aria-labelledby="sTitle">
+  <div class="d-head">
+    <h2 id="sTitle">Names &amp; data</h2>
+    <button class="btn primary" type="button" data-close>Done</button>
+  </div>
+  <div class="d-body">
+    <section>
+      <h3 class="section-title">Who's rating</h3>
+      <div class="fields">
+        <div class="field"><label for="nA">First rater</label><input class="input" id="nA" type="text" maxlength="20"></div>
+        <div class="field"><label for="nB">Second rater</label><input class="input" id="nB" type="text" maxlength="20"></div>
+      </div>
+    </section>
+    <section class="stack">
+      <h3 class="section-title">Move houses between devices</h3>
+      <p class="scale-note">Copy a link that holds all your houses and priorities, then open it on the other device. It merges with what's already there, so each of you can rate on your own phone and send the link back.</p>
+      <div class="row-btns">
+        <button class="btn primary" id="copyShare" type="button">Copy share link</button>
+      </div>
+      <input class="input share-out" id="shareOut" type="text" readonly hidden aria-label="Share link">
+    </section>
+    <section class="stack">
+      <h3 class="section-title">Backup</h3>
+      <div class="row-btns">
+        <button class="btn" id="exportBtn" type="button">Download backup (.json)</button>
+        <label class="btn" for="importFile">Import backup</label>
+        <input id="importFile" type="file" accept="application/json,.json" hidden>
+      </div>
+    </section>
+    <section class="stack">
+      <h3 class="section-title">Start over</h3>
+      <div class="row-btns">
+        <button class="btn danger" id="wipeBtn" type="button">Erase all houses on this device</button>
+      </div>
+    </section>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---- Criteria ----------------------------------------------------------
+  // p = default priority (1 = must-have … 5 = nice-to-have)
+  const CRITERIA = [
+    { id: "loc_safety",      group: "Location", name: "Safety",                      p: 1 },
+    { id: "loc_proximity",   group: "Location", name: "Proximity",                   p: 1, hint: "to work, friends, errands" },
+    { id: "space_office",    group: "Space",    name: "Office",                      p: 1 },
+    { id: "space_living",    group: "Space",    name: "Living room",                 p: 1 },
+    { id: "space_bedroom",   group: "Space",    name: "Bedroom",                     p: 1 },
+    { id: "space_guest",     group: "Space",    name: "Guest room",                  p: 2 },
+    { id: "space_furniture", group: "Space",    name: "Ease of arranging furniture", p: 2 },
+    { id: "kitchen_size",    group: "Kitchen",  name: "Size",                        p: 2 },
+    { id: "kitchen_storage", group: "Kitchen",  name: "Storage",                     p: 2 },
+    { id: "kitchen_appl",    group: "Kitchen",  name: "Appliances",                  p: 3 },
+    { id: "base_height",     group: "Basement", name: "Ceiling height",              p: 2 },
+    { id: "base_style",      group: "Basement", name: "Style",                       p: 3 },
+    { id: "base_storage",    group: "Basement", name: "Storage",                     p: 3 },
+    { id: "charm",           group: "The house", name: "Charm / vibe",               p: 1 },
+    { id: "climate",         group: "The house", name: "Climate control",            p: 1, hint: "HVAC, AC, drafts" },
+    { id: "maintenance",     group: "The house", name: "Required maintenance",       p: 1, hint: "10 = nothing to fix" },
+    { id: "condition",       group: "The house", name: "Condition",                  p: 3 },
+    { id: "stairs",          group: "The house", name: "Stairs",                     p: 2, hint: "10 = easy to live with" },
+    { id: "closets",         group: "The house", name: "Closets",                    p: 2 },
+    { id: "outdoor",         group: "Outside",  name: "Outdoor space",               p: 2 },
+    { id: "parking",         group: "Outside",  name: "Parking",                     p: 3 },
+  ];
+  const GROUPS = [...new Set(CRITERIA.map(c => c.group))];
+  const DEFAULT_WEIGHTS = Object.fromEntries(CRITERIA.map(c => [c.id, c.p]));
+  const DEFAULT_NAMES = { a: "Tim", b: "Sarah" };
+  const STORE_KEY = "house-hunt-scorecard:v1";
+  const WHO = ["a", "b"];
+
+  // ---- Scoring -----------------------------------------------------------
+  const multiplier = p => 6 - p; // priority 1 → ×5 … priority 5 → ×1
+
+  function score(house, weights, who) {
+    let num = 0, den = 0;
+    for (const c of CRITERIA) {
+      const r = house.ratings[c.id] || {};
+      const vals = (who ? [r[who]] : [r.a, r.b]).filter(v => v >= 1 && v <= 10);
+      if (!vals.length) continue;
+      const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
+      const w = multiplier(weights[c.id] ?? c.p);
+      num += w * avg;
+      den += w;
+    }
+    if (!den) return null;
+    return 1 + (num / den - 1) * 99 / 9;
+  }
+  function critAvg(house, id) {
+    const r = house.ratings[id] || {};
+    const vals = [r.a, r.b].filter(v => v >= 1);
+    return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+  }
+  function filledCount(house) {
+    let n = 0;
+    for (const c of CRITERIA) for (const w of WHO) if (house.ratings[c.id]?.[w] >= 1) n++;
+    return n;
+  }
+  const band = s => s == null ? "none" : s >= 75 ? "good" : s >= 55 ? "mid" : "low";
+  const fmtScore = s => s == null ? "–" : String(Math.round(s));
+
+  // ---- Data --------------------------------------------------------------
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const toInt = v => {
+    if (v == null || v === "") return null;
+    const n = typeof v === "number" ? v : Number(String(v).replace(/[^0-9.]/g, ""));
+    return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+  };
+  const validRating = v => (Number.isInteger(v) && v >= 1 && v <= 10) ? v : null;
+
+  function normalizeHouse(h) {
+    const now = Date.now();
+    const ratings = {};
+    for (const c of CRITERIA) {
+      const r = (h.ratings && h.ratings[c.id]) || {};
+      ratings[c.id] = { a: validRating(r.a), b: validRating(r.b) };
+    }
+    return {
+      id: String(h.id || uid()),
+      address: String(h.address || ""),
+      url: String(h.url || ""),
+      price: toInt(h.price),
+      sqft: toInt(h.sqft),
+      notes: String(h.notes || ""),
+      ratings,
+      example: !!h.example,
+      createdAt: Number(h.createdAt) || now,
+      updatedAt: Number(h.updatedAt) || now,
+    };
+  }
+  function normalizeState(s) {
+    const weights = { ...DEFAULT_WEIGHTS };
+    for (const c of CRITERIA) {
+      const w = s.weights && s.weights[c.id];
+      if (Number.isInteger(w) && w >= 1 && w <= 5) weights[c.id] = w;
+    }
+    return {
+      version: 1,
+      names: { a: (s.names && s.names.a) || DEFAULT_NAMES.a, b: (s.names && s.names.b) || DEFAULT_NAMES.b },
+      weights,
+      settingsUpdatedAt: Number(s.settingsUpdatedAt) || 0,
+      sort: ["score", "price", "ppsf", "newest"].includes(s.sort) ? s.sort : "score",
+      houses: Array.isArray(s.houses) ? s.houses.map(normalizeHouse) : [],
+    };
+  }
+
+  function exampleHouses() {
+    const ids = CRITERIA.map(c => c.id);
+    const mk = (id, address, price, sqft, a, b, daysAgo) => {
+      const ratings = {};
+      ids.forEach((cid, i) => { ratings[cid] = { a: a[i] ?? null, b: b[i] ?? null }; });
+      const t = Date.now() - daysAgo * 864e5;
+      return { id, address, price, sqft, ratings, example: true, createdAt: t, updatedAt: t, notes: "Example house. Remove it once you've added your own." };
+    };
+    return [
+      mk("ex1", "Craftsman bungalow", 615000, 1980,
+        [9, 8, 7, 8, 7, 6, 8, 7, 6, 5, 4, 5, 6, 10, 6, 7, 7, 6, 5, 8, 6],
+        [9, 7, 8, 9, 7, 5, 7, 8, 6, 6, 4, 4, 5, 9, 7, 6, 8, 7, 6, 9, 7], 2),
+      mk("ex2", "Brick colonial", 689000, 2450,
+        [8, 6, 9, 7, 8, 9, 7, 8, 8, 8, 8, 6, 8, 6, 9, 8, 9, 5, 8, 6, 9],
+        [7, 6, 8, 7, 9, 8, 8, 9, 8, 7, 7, 7, 7, 5, 8, 8, 8, 6, 9, 7, 8], 5),
+      mk("ex3", "Townhouse near the park", 529000, 1640,
+        [7, 10, 5, 6, 6, 4, 5, 6, 5, 9, 6, 7, 3, 7, 8, 9, 9, 3, 4, 4, null],
+        [8, 9, 4, 6, 7, null, 5, 5, 6, 9, 5, 6, 4, 8, 8, 9, 8, 4, 4, 5, null], 9),
+    ];
+  }
+
+  let storageOk = true;
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (raw) return normalizeState(JSON.parse(raw));
+    } catch (e) { storageOk = false; }
+    return normalizeState({ houses: exampleHouses() });
+  }
+  function save() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+    catch (e) {
+      if (storageOk) toast("This browser isn't saving. Copy a share link to keep your houses.");
+      storageOk = false;
+    }
+  }
+
+  let state = load();
+
+  // ---- Formatting --------------------------------------------------------
+  const esc = s => String(s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+  const commas = n => n == null ? "" : n.toLocaleString("en-US");
+  function money(n) {
+    if (n == null) return "";
+    if (n >= 1e6) return "$" + (n / 1e6).toFixed(2).replace(/\.?0+$/, "") + "M";
+    if (n >= 1e3) return "$" + Math.round(n / 1e3) + "K";
+    return "$" + n;
+  }
+  const ppsf = h => (h.price && h.sqft) ? h.price / h.sqft : null;
+  function sourceLabel(u) {
+    try {
+      const host = new URL(u).hostname.replace(/^www\./, "");
+      if (host.includes("zillow")) return "Zillow";
+      if (host.includes("compass")) return "Compass";
+      if (host.includes("redfin")) return "Redfin";
+      if (host.includes("realtor")) return "Realtor.com";
+      return host;
+    } catch (e) { return ""; }
+  }
+  const safeUrl = u => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ""; } catch (e) { return ""; } };
+
+  // Zillow / Compass URLs carry the address in their slug:
+  //   zillow.com/homedetails/1842-W-Wolfram-St-Chicago-IL-60657/3812345_zpid/
+  //   compass.com/homedetails/1842-W-Wolfram-St-Chicago-IL-60657/ABC_pid/
+  //   compass.com/listing/1842-w-wolfram-st-chicago-il-60657/123456/
+  function addressFromUrl(u) {
+    try {
+      const parts = new URL(u).pathname.split("/").filter(Boolean);
+      const i = parts.findIndex(p => p === "homedetails" || p === "listing");
+      if (i < 0 || !parts[i + 1]) return "";
+      const words = decodeURIComponent(parts[i + 1]).split("-").filter(Boolean);
+      if (words.length < 2 || /_zpid$|_pid$/.test(parts[i + 1])) return "";
+      return words.map((w, j) => {
+        if (/^[a-z]{2}$/i.test(w) && /^\d{5}$/.test(words[j + 1] || "")) return w.toUpperCase();
+        if (/^[nsew]$/i.test(w)) return w.toUpperCase();
+        return w.charAt(0).toUpperCase() + w.slice(1);
+      }).join(" ");
+    } catch (e) { return ""; }
+  }
+
+  // ---- Rendering: list ---------------------------------------------------
+  const $ = id => document.getElementById(id);
+  const listEl = $("list");
+
+  function applyNames() {
+    document.querySelectorAll("[data-name]").forEach(el => { el.textContent = state.names[el.dataset.name]; });
+  }
+
+  function render() {
+    const houses = state.houses;
+    const scored = houses.map(h => ({ h, s: score(h, state.weights), a: score(h, state.weights, "a"), b: score(h, state.weights, "b") }));
+    const byScore = [...scored].sort((x, y) => (y.s ?? -1) - (x.s ?? -1) || y.h.updatedAt - x.h.updatedAt);
+    const rankOf = new Map(byScore.map((x, i) => [x.h.id, x.s == null ? null : i + 1]));
+
+    let rows = byScore;
+    if (state.sort === "price") rows = [...scored].sort((x, y) => (x.h.price ?? Infinity) - (y.h.price ?? Infinity));
+    if (state.sort === "ppsf") rows = [...scored].sort((x, y) => (ppsf(x.h) ?? Infinity) - (ppsf(y.h) ?? Infinity));
+    if (state.sort === "newest") rows = [...scored].sort((x, y) => y.h.updatedAt - x.h.updatedAt);
+
+    listEl.innerHTML = rows.map(({ h, s, a, b }) => {
+      const rank = rankOf.get(h.id);
+      const meta = [];
+      if (h.price) meta.push(`<span class="num" title="$${commas(h.price)}">${money(h.price)}</span>`);
+      if (h.sqft) meta.push(`<span><span class="num">${commas(h.sqft)}</span> sq ft</span>`);
+      const p = ppsf(h);
+      if (p) meta.push(`<span><span class="num">$${Math.round(p)}</span>/sq ft</span>`);
+      const link = safeUrl(h.url);
+      if (link) meta.push(`<a href="${esc(link)}" target="_blank" rel="noopener" data-link>${esc(sourceLabel(link))} ↗</a>`);
+      const filled = filledCount(h);
+      const total = CRITERIA.length * 2;
+      const pos = v => `${Math.max(0, Math.min(100, (v - 1) / 99 * 100)).toFixed(1)}%`;
+      return `<li><div class="house" role="button" tabindex="0" data-id="${esc(h.id)}" aria-label="Edit ${esc(h.address || "untitled house")}">
+        <div class="rank${rank === 1 ? " first" : ""}" title="Rank by score">${rank ?? "–"}</div>
+        <div class="h-main">
+          <h2 class="h-name">${esc(h.address || "Untitled house")}${h.example ? '<span class="tag">Example</span>' : ""}</h2>
+          ${meta.length ? `<div class="h-meta">${meta.join("")}</div>` : ""}
+        </div>
+        <div class="h-score"><div class="big ${band(s)}">${s == null ? "Unrated" : `${fmtScore(s)}<small>/100</small>`}</div></div>
+        <div class="h-sub">
+          <div class="track" aria-hidden="true">
+            <div class="rail"></div>
+            ${s != null ? `<div class="fill" style="width:${pos(s)}"></div>` : ""}
+            ${a != null ? `<div class="dot a" style="left:${pos(a)}"></div>` : ""}
+            ${b != null ? `<div class="dot b" style="left:${pos(b)}"></div>` : ""}
+          </div>
+          <div class="legend">
+            <span class="la"><span class="sw"></span>${esc(state.names.a)} <b>${fmtScore(a)}</b></span>
+            <span class="lb"><span class="sw"></span>${esc(state.names.b)} <b>${fmtScore(b)}</b></span>
+            <span>${filled === total ? "All rated" : `${filled} of ${total} ratings`}</span>
+          </div>
+        </div>
+      </div></li>`;
+    }).join("");
+
+    const real = houses.filter(h => !h.example).length;
+    $("empty").hidden = houses.length > 0;
+    $("bar").hidden = houses.length === 0;
+    $("exampleBanner").hidden = !houses.some(h => h.example);
+    $("count").textContent = houses.length === 1 ? "1 house" : `${houses.length} houses`;
+    if (houses.length && real === 0) $("count").textContent += " (examples)";
+    $("sort").value = state.sort;
+  }
+
+  listEl.addEventListener("click", e => {
+    if (e.target.closest("[data-link]")) return;
+    const card = e.target.closest(".house");
+    if (card) openEditor(card.dataset.id);
+  });
+  listEl.addEventListener("keydown", e => {
+    if ((e.key === "Enter" || e.key === " ") && e.target.classList.contains("house")) {
+      e.preventDefault();
+      openEditor(e.target.dataset.id);
+    }
+  });
+  $("sort").addEventListener("change", e => { state.sort = e.target.value; save(); render(); });
+  $("removeExamples").addEventListener("click", () => {
+    state.houses = state.houses.filter(h => !h.example);
+    save(); render();
+    toast("Examples removed");
+  });
+
+  // ---- Editor ------------------------------------------------------------
+  const editor = $("editor");
+  let current = null;   // house being edited
+  let isNew = false;
+
+  function touch() { current.updatedAt = Date.now(); save(); render(); }
+
+  function buildRatings() {
+    const pips = (cid, who, val) => Array.from({ length: 10 }, (_, i) => {
+      const v = i + 1;
+      const cls = val == null ? "" : v === val ? " sel" : v < val ? " fill" : "";
+      return `<button type="button" class="pip${cls}" data-c="${cid}" data-w="${who}" data-v="${v}" aria-pressed="${v === val}" aria-label="${esc(state.names[who])}: ${v} of 10">${v}</button>`;
+    }).join("");
+    $("edRatings").innerHTML = GROUPS.map(g => `
+      <div class="group">
+        <h3 class="section-title"><span>${esc(g)}</span></h3>
+        <div class="crits">
+          ${CRITERIA.filter(c => c.group === g).map(c => {
+            const r = current.ratings[c.id];
+            const p = state.weights[c.id];
+            const avg = critAvg(current, c.id);
+            return `<div class="crit" data-crit="${c.id}">
+              <div class="crit-head">
+                <span class="crit-name">${esc(c.name)}${c.hint ? ` <span class="crit-hint">${esc(c.hint)}</span>` : ""}</span>
+                <span class="pri" title="Priority ${p}, counts ${multiplier(p)}×">P${p}</span>
+                <span class="crit-avg${avg == null ? " empty-avg" : ""}" data-avg="${c.id}" title="Average">${avg == null ? "–" : avg.toFixed(1).replace(/\.0$/, "")}</span>
+              </div>
+              ${WHO.map(w => `<div class="rate-row r${w}"><span class="who">${esc(state.names[w])}</span><div class="pips" role="group" aria-label="${esc(state.names[w])}'s rating for ${esc(c.name)}">${pips(c.id, w, r[w])}</div></div>`).join("")}
+            </div>`;
+          }).join("")}
+        </div>
+      </div>`).join("");
+  }
+
+  function refreshEditorScores() {
+    const s = score(current, state.weights);
+    const el = $("edScore");
+    el.className = "big " + band(s);
+    el.textContent = fmtScore(s);
+    $("edA").textContent = fmtScore(score(current, state.weights, "a"));
+    $("edB").textContent = fmtScore(score(current, state.weights, "b"));
+  }
+  function refreshListingBits() {
+    $("edTitle").textContent = current.address || (isNew ? "New house" : "Untitled house");
+    const link = safeUrl(current.url);
+    $("fUrlOpen").hidden = !link;
+    if (link) $("fUrlOpen").href = link;
+    const p = ppsf(current);
+    $("fPpsf").textContent = p ? `$${Math.round(p)} per sq ft` : "";
+  }
+
+  function openEditor(id, fresh = false) {
+    current = state.houses.find(h => h.id === id);
+    if (!current) return;
+    isNew = fresh;
+    $("fUrl").value = current.url;
+    $("fName").value = current.address;
+    $("fPrice").value = commas(current.price);
+    $("fSqft").value = commas(current.sqft);
+    $("fNotes").value = current.notes;
+    resetDelete();
+    buildRatings();
+    refreshListingBits();
+    refreshEditorScores();
+    $("edBody").scrollTop = 0;
+    if (!editor.open) editor.showModal();
+    if (fresh) setTimeout(() => $("fUrl").focus(), 50);
+  }
+
+  function isBlank(h) {
+    return !h.address && !h.url && !h.price && !h.sqft && !h.notes && filledCount(h) === 0;
+  }
+  function closeEditor() { if (editor.open) editor.close(); }
+  editor.addEventListener("close", () => {
+    if (current && isBlank(current)) {
+      state.houses = state.houses.filter(h => h !== current);
+      save(); render();
+    }
+    current = null;
+  });
+  editor.addEventListener("click", e => { if (e.target === editor) closeEditor(); });
+  $("edDone").addEventListener("click", closeEditor);
+
+  $("edRatings").addEventListener("click", e => {
+    const pip = e.target.closest(".pip");
+    if (!pip || !current) return;
+    const { c, w } = pip.dataset;
+    const v = Number(pip.dataset.v);
+    const r = current.ratings[c];
+    r[w] = r[w] === v ? null : v; // tap the same number again to clear
+    pip.parentElement.querySelectorAll(".pip").forEach(btn => {
+      const bv = Number(btn.dataset.v);
+      btn.classList.toggle("sel", r[w] === bv);
+      btn.classList.toggle("fill", r[w] != null && bv < r[w]);
+      btn.setAttribute("aria-pressed", String(r[w] === bv));
+    });
+    const avg = critAvg(current, c);
+    const avgEl = $("edRatings").querySelector(`[data-avg="${c}"]`);
+    avgEl.textContent = avg == null ? "–" : avg.toFixed(1).replace(/\.0$/, "");
+    avgEl.classList.toggle("empty-avg", avg == null);
+    if (current.example) current.example = false;
+    refreshEditorScores();
+    touch();
+  });
+
+  $("fUrl").addEventListener("input", e => { current.url = e.target.value.trim(); refreshListingBits(); touch(); });
+  $("fUrl").addEventListener("change", () => {
+    if (!current.address) {
+      const guess = addressFromUrl(current.url);
+      if (guess) { current.address = guess; $("fName").value = guess; refreshListingBits(); touch(); }
+    }
+  });
+  $("fName").addEventListener("input", e => { current.address = e.target.value; refreshListingBits(); touch(); });
+  $("fNotes").addEventListener("input", e => { current.notes = e.target.value; touch(); });
+  for (const [id, key] of [["fPrice", "price"], ["fSqft", "sqft"]]) {
+    $(id).addEventListener("input", e => { current[key] = toInt(e.target.value); refreshListingBits(); touch(); });
+    $(id).addEventListener("blur", e => { e.target.value = commas(current[key]); });
+  }
+
+  let deleteTimer = null;
+  function resetDelete() {
+    clearTimeout(deleteTimer);
+    $("edDelete").classList.remove("armed");
+    $("edDelete").textContent = "Delete house";
+  }
+  $("edDelete").addEventListener("click", () => {
+    const btn = $("edDelete");
+    if (!btn.classList.contains("armed")) {
+      btn.classList.add("armed");
+      btn.textContent = "Tap again to delete";
+      deleteTimer = setTimeout(resetDelete, 4000);
+      return;
+    }
+    const name = current.address || "House";
+    state.houses = state.houses.filter(h => h !== current);
+    current = null;
+    save(); render(); closeEditor();
+    toast(`${name} deleted`);
+  });
+
+  function addHouse() {
+    const h = normalizeHouse({});
+    state.houses.push(h);
+    save(); render();
+    openEditor(h.id, true);
+  }
+  $("addHouse").addEventListener("click", addHouse);
+  document.addEventListener("click", e => { if (e.target.closest("[data-action=add]")) addHouse(); });
+
+  // ---- Priorities --------------------------------------------------------
+  const weightsDlg = $("weights");
+  function buildWeights() {
+    $("wGroups").innerHTML = GROUPS.map(g => `
+      <div>
+        <h3 class="section-title"><span>${esc(g)}</span></h3>
+        <div class="w-list">
+          ${CRITERIA.filter(c => c.group === g).map(c => {
+            const p = state.weights[c.id];
+            return `<div class="w-row">
+              <span class="nm">${esc(c.name)}<small>Counts ${multiplier(p)}×</small></span>
+              <span class="seg" role="group" aria-label="Priority for ${esc(g)}: ${esc(c.name)}">
+                ${[1, 2, 3, 4, 5].map(v => `<button type="button" data-c="${c.id}" data-v="${v}" class="${v === p ? "sel" : ""}${v === c.p ? " def" : ""}" aria-pressed="${v === p}">${v}</button>`).join("")}
+              </span>
+            </div>`;
+          }).join("")}
+        </div>
+      </div>`).join("");
+  }
+  $("openWeights").addEventListener("click", () => { buildWeights(); weightsDlg.showModal(); });
+  $("wGroups").addEventListener("click", e => {
+    const b = e.target.closest("button[data-c]");
+    if (!b) return;
+    state.weights[b.dataset.c] = Number(b.dataset.v);
+    state.settingsUpdatedAt = Date.now();
+    save(); render();
+    const scroll = weightsDlg.querySelector(".d-body").scrollTop;
+    buildWeights();
+    weightsDlg.querySelector(".d-body").scrollTop = scroll;
+  });
+  $("wReset").addEventListener("click", () => {
+    state.weights = { ...DEFAULT_WEIGHTS };
+    state.settingsUpdatedAt = Date.now();
+    save(); render(); buildWeights();
+    toast("Priorities reset");
+  });
+
+  // ---- Settings, share, backup -----------------------------------------
+  const settingsDlg = $("settings");
+  $("openSettings").addEventListener("click", () => {
+    $("nA").value = state.names.a;
+    $("nB").value = state.names.b;
+    $("shareOut").hidden = true;
+    resetWipe();
+    settingsDlg.showModal();
+  });
+  for (const [id, key] of [["nA", "a"], ["nB", "b"]]) {
+    $(id).addEventListener("input", e => {
+      state.names[key] = e.target.value.trim() || DEFAULT_NAMES[key];
+      state.settingsUpdatedAt = Date.now();
+      save(); applyNames(); render();
+    });
+  }
+  document.querySelectorAll("dialog [data-close]").forEach(b => b.addEventListener("click", () => b.closest("dialog").close()));
+  document.querySelectorAll("dialog").forEach(d => d.addEventListener("click", e => { if (e.target === d) d.close(); }));
+
+  function payload() {
+    return {
+      app: "house-hunt-scorecard", version: 1,
+      names: state.names, weights: state.weights, settingsUpdatedAt: state.settingsUpdatedAt,
+      houses: state.houses.filter(h => !h.example),
+    };
+  }
+
+  const b64url = bytes => { let s = ""; bytes.forEach(b => s += String.fromCharCode(b)); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+  const fromB64url = str => { const s = atob(str.replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(s, ch => ch.charCodeAt(0)); };
+  async function pipeBytes(bytes, stream) {
+    const out = new Blob([bytes]).stream().pipeThrough(stream);
+    return new Uint8Array(await new Response(out).arrayBuffer());
+  }
+  async function encode(obj) {
+    const bytes = new TextEncoder().encode(JSON.stringify(obj));
+    if ("CompressionStream" in window) {
+      try { return "z" + b64url(await pipeBytes(bytes, new CompressionStream("deflate-raw"))); } catch (e) {}
+    }
+    return "j" + b64url(bytes);
+  }
+  async function decode(str) {
+    const kind = str[0], bytes = fromB64url(str.slice(1));
+    const raw = kind === "z" ? await pipeBytes(bytes, new DecompressionStream("deflate-raw")) : bytes;
+    return JSON.parse(new TextDecoder().decode(raw));
+  }
+
+  $("copyShare").addEventListener("click", async () => {
+    const data = payload();
+    if (!data.houses.length) { toast("Add a house first. Examples aren't shared."); return; }
+    const link = location.origin + location.pathname + "#d=" + await encode(data);
+    const out = $("shareOut");
+    out.value = link;
+    out.hidden = false;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast(`Link copied with ${data.houses.length} house${data.houses.length === 1 ? "" : "s"}`);
+    } catch (e) {
+      out.focus(); out.select();
+      toast("Select the link below and copy it");
+    }
+  });
+
+  // Merge incoming houses with local ones. Per rating, the newer copy wins,
+  // but a blank never overwrites a number, so two people rating on separate
+  // devices both keep their scores.
+  function mergeIn(data) {
+    let added = 0, updated = 0;
+    for (const raw of (data.houses || [])) {
+      const inc = normalizeHouse(raw);
+      const idx = state.houses.findIndex(h => h.id === inc.id);
+      if (idx < 0) { state.houses.push(inc); added++; continue; }
+      const cur = state.houses[idx];
+      const [newer, older] = inc.updatedAt >= cur.updatedAt ? [inc, cur] : [cur, inc];
+      const merged = { ...older, ...newer, ratings: {} };
+      for (const f of ["address", "url", "notes"]) if (!newer[f]) merged[f] = older[f];
+      for (const f of ["price", "sqft"]) if (newer[f] == null) merged[f] = older[f];
+      for (const c of CRITERIA) {
+        merged.ratings[c.id] = {};
+        for (const w of WHO) merged.ratings[c.id][w] = newer.ratings[c.id][w] ?? older.ratings[c.id][w];
+      }
+      merged.example = false;
+      merged.createdAt = Math.min(cur.createdAt, inc.createdAt);
+      merged.updatedAt = Math.max(cur.updatedAt, inc.updatedAt);
+      if (JSON.stringify(merged) !== JSON.stringify(cur)) updated++;
+      state.houses[idx] = merged;
+    }
+    if ((data.settingsUpdatedAt || 0) > state.settingsUpdatedAt) {
+      const n = normalizeState({ weights: data.weights, names: data.names });
+      state.weights = n.weights;
+      state.names = n.names;
+      state.settingsUpdatedAt = data.settingsUpdatedAt;
+    }
+    if (added) state.houses = state.houses.filter(h => !h.example);
+    save(); applyNames(); render();
+    return { added, updated };
+  }
+  const mergeMsg = ({ added, updated }) =>
+    (added || updated) ? `Added ${added}, updated ${updated}` : "Already up to date";
+
+  $("exportBtn").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify(payload(), null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `house-scores-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+  $("importFile").addEventListener("change", async e => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (!Array.isArray(data.houses)) throw new Error("no houses");
+      toast(mergeMsg(mergeIn(data)));
+    } catch (err) {
+      toast("That file isn't a scorecard backup");
+    }
+  });
+
+  let wipeTimer = null;
+  function resetWipe() {
+    clearTimeout(wipeTimer);
+    $("wipeBtn").classList.remove("armed");
+    $("wipeBtn").textContent = "Erase all houses on this device";
+  }
+  $("wipeBtn").addEventListener("click", () => {
+    const btn = $("wipeBtn");
+    if (!btn.classList.contains("armed")) {
+      btn.classList.add("armed");
+      btn.textContent = "Tap again to erase everything";
+      wipeTimer = setTimeout(resetWipe, 4000);
+      return;
+    }
+    state.houses = [];
+    save(); render(); resetWipe();
+    toast("All houses erased");
+  });
+
+  // Incoming share link
+  let pending = null;
+  async function checkHash() {
+    const m = location.hash.match(/^#d=([A-Za-z0-9_-]+)$/);
+    if (!m) return;
+    history.replaceState(null, "", location.pathname + location.search);
+    try {
+      pending = await decode(m[1]);
+      const n = (pending.houses || []).length;
+      $("importText").textContent = `This link has ${n} house${n === 1 ? "" : "s"}. Merge into your list? Ratings from both copies are kept.`;
+      $("importBanner").hidden = false;
+    } catch (e) {
+      toast("That share link looks incomplete. Copy it again.");
+    }
+  }
+  $("importAccept").addEventListener("click", () => {
+    if (pending) toast(mergeMsg(mergeIn(pending)));
+    pending = null;
+    $("importBanner").hidden = true;
+  });
+  $("importDismiss").addEventListener("click", () => { pending = null; $("importBanner").hidden = true; });
+  window.addEventListener("hashchange", checkHash);
+
+  // ---- Toast -------------------------------------------------------------
+  let toastTimer = null;
+  function toast(msg) {
+    const t = $("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+  }
+
+  // ---- Boot --------------------------------------------------------------
+  applyNames();
+  render();
+  checkHash();
+
+  // exposed for quick checks in the console
+  window.__scorecard = { score, CRITERIA, addressFromUrl };
+})();
+</script>
+</body>
+</html>
