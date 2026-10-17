@@ -163,6 +163,16 @@ a { color: inherit; }
   font: 600 11px/1.6 var(--body); letter-spacing: .04em; text-transform: uppercase;
   background: var(--surface-2); color: var(--muted); border: 1px solid var(--line);
 }
+.tag.status {
+  --c: var(--muted);
+  background: color-mix(in srgb, var(--c) 13%, var(--surface));
+  border-color: color-mix(in srgb, var(--c) 40%, var(--line));
+  color: var(--c);
+}
+.tag.s-offer_in { --c: var(--mid); }
+.tag.s-offer_accepted { --c: var(--good); }
+.tag.s-offer_denied { --c: var(--low); }
+.tag.s-sold { --c: var(--ink); }
 .h-meta { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 4px; font-size: 13.5px; color: var(--muted); }
 .h-meta .num { font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--ink); }
 .h-meta a { color: var(--a); font-weight: 600; text-decoration: none; }
@@ -469,6 +479,16 @@ main { display: contents; }
           <input class="input" id="fName" type="text" placeholder="1842 W Wolfram St" autocomplete="off">
           <span class="hint">Filled in from the link when it can be.</span>
         </div>
+        <div class="field wide">
+          <label for="fStatus">Status</label>
+          <select class="input" id="fStatus">
+            <option value="open">Open</option>
+            <option value="offer_in">Offer in</option>
+            <option value="offer_accepted">Offer accepted</option>
+            <option value="offer_denied">Offer denied</option>
+            <option value="sold">Sold</option>
+          </select>
+        </div>
         <div class="field">
           <label for="fPrice">Price</label>
           <div class="with-prefix"><span>$</span><input class="input num" id="fPrice" type="text" inputmode="numeric" placeholder="585,000" autocomplete="off"></div>
@@ -602,6 +622,7 @@ const DEFAULT_NAMES = { a: "Tim", b: "Sarah" };
 const STORE_KEY = "house-hunt-scorecard:v1";
 const PREFS_KEY = "house-hunt-scorecard:prefs";
 const WHO = ["a", "b"];
+const STATUSES = { open: "Open", offer_in: "Offer in", offer_accepted: "Offer accepted", offer_denied: "Offer denied", sold: "Sold" };
 const SCALE = 5;            // each rating is 1…SCALE
 
 // ---- Scoring --------------------------------------------------------------
@@ -654,6 +675,7 @@ function normalizeHouse(h) {
   return {
     id: String(h.id || uid()),
     address: String(h.address || ""),
+    status: h.status in STATUSES ? h.status : "open",
     url: String(h.url || ""),
     price: toInt(h.price),
     sqft: toInt(h.sqft),
@@ -830,7 +852,7 @@ function render() {
     return `<li><div class="house" role="button" tabindex="0" data-id="${esc(h.id)}" aria-label="Edit ${esc(h.address || "untitled house")}">
       <div class="rank${rank === 1 ? " first" : ""}" title="Rank by score">${rank ?? "–"}</div>
       <div class="h-main">
-        <h2 class="h-name">${esc(h.address || "Untitled house")}${h.example ? '<span class="tag">Example</span>' : ""}</h2>
+        <h2 class="h-name">${esc(h.address || "Untitled house")}<span class="tag status s-${h.status}">${STATUSES[h.status]}</span>${h.example ? '<span class="tag">Example</span>' : ""}</h2>
         ${meta.length ? `<div class="h-meta">${meta.join("")}</div>` : ""}
       </div>
       <div class="h-score"><div class="big ${band(s)}">${s == null ? "Unrated" : `${fmtScore(s)}<small>/100</small>`}</div></div>
@@ -951,7 +973,7 @@ function refreshListingBits() {
   const p = ppsf(current);
   $("fPpsf").textContent = p ? `$${Math.round(p)} per sq ft` : "";
 }
-const FIELD_INPUTS = [["fUrl", "url"], ["fName", "address"], ["fPrice", "price"], ["fSqft", "sqft"], ["fNotes", "notes"]];
+const FIELD_INPUTS = [["fUrl", "url"], ["fName", "address"], ["fStatus", "status"],["fPrice", "price"], ["fSqft", "sqft"], ["fNotes", "notes"]];
 function fillInputs(skipFocused) {
   for (const [id, key] of FIELD_INPUTS) {
     const el = $(id);
@@ -1021,6 +1043,7 @@ $("fUrl").addEventListener("change", () => {
   }
 });
 $("fName").addEventListener("input", e => { current.address = e.target.value; refreshListingBits(); touch({ address: current.address }, true); });
+$("fStatus").addEventListener("change", e => { current.status = e.target.value; touch({ status: current.status }); });
 $("fNotes").addEventListener("input", e => { current.notes = e.target.value; touch({ notes: current.notes }, true); });
 for (const [id, key] of [["fPrice", "price"], ["fSqft", "sqft"]]) {
   $(id).addEventListener("input", e => { current[key] = toInt(e.target.value); refreshListingBits(); touch({ [key]: current[key] }, true); });
@@ -1316,7 +1339,7 @@ function cloudPersist(fs, db) {
     toast(err && err.code === "permission-denied" ? "Your account can't save changes" : "Couldn't save. Check your connection.");
   };
   const plain = h => ({
-    address: h.address, url: h.url, price: h.price, sqft: h.sqft, notes: h.notes,
+    address: h.address, status: h.status, url: h.url, price: h.price, sqft: h.sqft, notes: h.notes,
     ratings: h.ratings, createdAt: h.createdAt, updatedAt: h.updatedAt,
   });
   function flush(id) {
